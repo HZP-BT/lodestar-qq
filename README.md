@@ -10,15 +10,15 @@ Lodestar 是一个 **Apache-2.0 的 OneBot v11 运行时**，面向“附着真�
 
 ## 下载与安装（新用户，推荐）
 
-从 [GitHub Releases](../../releases) 下载 `lodestar-portable-0.1.0-m1.1-windows-x64.zip`。
+从 [GitHub Releases](../../releases) 下载 `lodestar-portable-0.1.0-m1.2-windows-x64.zip`。
 解压后双击 `Lodestar-Setup.cmd`。包内自带 Node、Core、WebUI 和 QQ loader，
 **不需要安装 Node 或 pnpm**。
 
 前置条件：
 
 - Windows 10/11 x64；
-- QQ `9.9.37-54395`，默认 `D:\qq`；
-- AstrBot 已安装，默认 `D:\AstrBot`，并启用 aiocqhttp 反向 WS（默认 `6199`）；
+- QQ `9.9.37-54395`（安装器会自动查找安装目录，常见 `D:\qq`）；
+- AstrBot 已安装（自动查找，常见 `D:\AstrBot`），并启用 aiocqhttp 反向 WS（默认 `6199`）；
 - 管理员权限（首次打补丁/安装 loader 需要 UAC）；
 - 只使用测试号。
 
@@ -235,10 +235,11 @@ powershell -ExecutionPolicy Bypass -File scripts\windows\setup.ps1
 
 源码 external 流程会：
 
-1. 读取 AstrBot 的 `cmd_config.json`，自动识别 aiocqhttp 端口和 token；
-2. 自动识别测试号 QQ 号（已保存配置 → loader 配置 → AstrBot 日志），都没有时只问一次；
-3. 需要时弹出 UAC，自动打 9.9.37 补丁、安装 loader、启动 QQ；
-4. 写入 `config/upstream.json`，启动 Core，打开 `http://127.0.0.1:18081` 并打印管理 token。
+1. 自动查找 QQ 和 AstrBot 目录（注册表/运行中进程/常见路径/固定盘浅层扫描）；
+2. 读取 AstrBot 的 `cmd_config.json`，自动识别 aiocqhttp 端口和 token；
+3. 自动识别测试号 QQ 号（已保存配置 → loader 配置 → AstrBot 日志），都没有时只问一次；
+4. 需要时弹出 UAC，自动打 9.9.37 补丁、安装 loader、启动 QQ；
+5. 写入 `config/upstream.json`，启动 Core，打开 `http://127.0.0.1:18081` 并打印管理 token。
 
 之后再次双击就是纯启动，不再询问。QQ 登录仍需你在 QQ 窗口完成；脚本会提示并等待
 最多 300 秒。缺少 AstrBot、端口或 QQ 时会明确报错，**不会回退到 mock**。

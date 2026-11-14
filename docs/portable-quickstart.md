@@ -1,6 +1,6 @@
 # Lodestar 便携版（Windows x64）新用户指南
 
-> 版本：0.1.0-m1.1 · 适用：Windows 10/11 x64 · 目标 QQ：`9.9.37-54395`
+> 版本：0.1.0-m1.2 · 适用：Windows 10/11 x64 · 目标 QQ：`9.9.37-54395`
 >
 > Lodestar 是一个 **Apache-2.0 的 OneBot v11 运行时**，负责协议会话、可靠性、独立探针、
 > SendGuard 风险控制和本地 Web 控制面板。便携版把运行所需的 Node、Core、WebUI 和
@@ -14,8 +14,9 @@
 适合：
 
 - Windows 10/11 x64；
-- 已安装 QQ `9.9.37-54395`（默认 `D:\qq`）；
-- 已安装 AstrBot（默认 `D:\AstrBot`），并启用 OneBot v11 / aiocqhttp 适配器；
+- 已安装 QQ `9.9.37-54395`（安装器会自动查找安装目录，常见 `D:\qq`）；
+- 已安装 AstrBot（安装器会自动查找安装目录，常见 `D:\AstrBot`），并启用 OneBot v11 /
+  aiocqhttp 适配器；
 - 想让 AstrBot 通过 Lodestar 连接真实 QQ，且本机不需要预装 Node/pnpm；
 - 只做个人或小规模、低频率的合法用途。
 
@@ -52,13 +53,19 @@ AstrBot 和 QQ 不随包分发，需要你自行安装。
 ### 3.1 QQ
 
 - 必须是 **9.9.37-54395**。补丁只对这个版本的 `QQNT.dll` 有效，其他版本会直接拒绝。
+- 安装器会自动查找 QQ 目录：注册表 `Tencent\QQNT` 的 `Install`、卸载项
+  `DisplayIcon/UninstallString`、正在运行的 `QQ.exe`、常见路径和固定盘浅层扫描。
+- 自动查找失败时，用 `-QQRoot` 指定（见第 8 节）。
 - 默认安装目录 `D:\qq`。如果不在默认目录，安装时用 `-QQRoot` 指定（见第 8 节）。
 - 关闭 QQ 的系统自动更新，避免升级后补丁失效。
 - 只登录测试号；不要用主力号做首次验证。
 
 ### 3.2 AstrBot
 
-- 默认安装目录 `D:\AstrBot`。
+- 安装器会自动查找 AstrBot：正在运行的 `astrbot-desktop-tauri.exe`、卸载项、常见路径和
+  固定盘浅层扫描。常见路径包括 `D:\AstrBot`、`C:\Program Files\AstrBot`、
+  `%LOCALAPPDATA%\Programs\AstrBot` 等。
+- 自动查找失败时，用 `-AstrBotRoot` 指定（见第 8 节）。
 - 在 AstrBot 中新建/启用 **OneBot v11（aiocqhttp）** 适配器：
   - 反向 WS 主机：`0.0.0.0`
   - 反向 WS 端口：`6199`
@@ -205,7 +212,8 @@ Core/AstrBot 重启顺序不对或旧连接未清理。按这个顺序恢复：
 
 ## 8. 非默认路径
 
-默认路径是 `D:\qq` 和 `D:\AstrBot`。如果安装在其他位置，用 PowerShell 运行：
+安装器会自动查找 QQ 和 AstrBot，通常不需要手动指定。如果自动查找失败，或者机器上有多份
+安装，用 PowerShell 显式指定：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\bootstrap-external.ps1 `
@@ -213,7 +221,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\bootstrap-external.ps1 `
   -AstrBotRoot "E:\AstrBot"
 ```
 
-`Lodestar-Setup.cmd` 是默认路径的快捷入口；非默认路径建议保存上面这条命令。
+`Lodestar-Setup.cmd` 是不带参数、自动查找路径的快捷入口；自动查找失败时再保存上面这条
+命令。
 
 ## 9. 升级、回滚与卸载
 
@@ -279,7 +288,7 @@ D:\qq\polaris-backup\<版本>-<时间>\
 
 ## 12. 版本与支持
 
-- 当前版本：`0.1.0-m1.1`
+- 当前版本：`0.1.0-m1.2`
 - 目标 QQ：`9.9.37-54395`（补丁只对这个版本有效）
 - 问题反馈请附：`install.log`、最新的 `self-loader-*.jsonl`、AstrBot 报错时间和
   面板审计中的 reason；不要附带账号密码、token 或消息正文。

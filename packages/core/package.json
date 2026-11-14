@@ -1,6 +1,6 @@
 {
   "name": "@lodestar/core",
-  "version": "0.1.0-m1.1",
+  "version": "0.1.0-m1.2",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",

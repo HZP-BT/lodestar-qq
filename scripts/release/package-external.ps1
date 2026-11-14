@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$OutputDir = "release-external",
     [string]$NodeVersion = "24.11.1"
 )
@@ -54,14 +54,17 @@ if (-not $wsRoot) { throw "ws package not found; run pnpm install first" }
 $wsSource = Join-Path $wsRoot.FullName "node_modules\ws"
 Copy-Item -LiteralPath $wsSource -Destination (Join-Path $out "node_modules\ws") -Recurse -Force
 
-$nodeExe = Join-Path $root "release\lodestar-0.1.0-m1.1-windows-x64\node.exe"
-if (Test-Path -LiteralPath $nodeExe) {
+$nodeExe = Get-ChildItem -LiteralPath (Join-Path $root "release") -Directory -Filter "lodestar-*-windows-x64" -ErrorAction SilentlyContinue |
+    ForEach-Object { Join-Path $_.FullName "node.exe" } |
+    Where-Object { Test-Path -LiteralPath $_ } |
+    Select-Object -First 1
+$nodeZip = Join-Path $env:TEMP "node-v$NodeVersion-win-x64.zip"
+$nodeExtract = Join-Path $env:TEMP "lodestar-node-v$NodeVersion"
+if ($nodeExe -and (Test-Path -LiteralPath $nodeExe)) {
     Write-Host "Copying bundled node.exe from the release stage..."
     Copy-Item -LiteralPath $nodeExe -Destination (Join-Path $out "node.exe") -Force
 } else {
     Write-Host "Downloading Node v$NodeVersion..."
-    $nodeZip = Join-Path $env:TEMP "node-v$NodeVersion-win-x64.zip"
-    $nodeExtract = Join-Path $env:TEMP "lodestar-node-v$NodeVersion"
     if (-not (Test-Path -LiteralPath $nodeZip)) {
         Invoke-WebRequest -UseBasicParsing `
             -Uri "https://nodejs.org/dist/v$NodeVersion/node-v$NodeVersion-win-x64.zip" `
@@ -78,7 +81,7 @@ if (Test-Path -LiteralPath $nodeExe) {
 
 $nodeLicense = Join-Path $out "NODE-LICENSE.txt"
 $licenseCandidates = @(
-    (Join-Path $env:TEMP "lodestar-node-v$NodeVersion\node-v$NodeVersion-win-x64\LICENSE"),
+    (Join-Path $nodeExtract "node-v$NodeVersion-win-x64\LICENSE"),
     (Join-Path $env:TEMP "node-v$NodeVersion-win-x64\LICENSE")
 )
 $licenseFound = $false
@@ -88,6 +91,19 @@ foreach ($candidate in $licenseCandidates) {
         $licenseFound = $true
         break
     }
+}
+if (-not $licenseFound -and (Test-Path -LiteralPath $nodeZip)) {
+    $licenseTemp = Join-Path $env:TEMP "lodestar-node-license"
+    if (Test-Path -LiteralPath $licenseTemp) {
+        Remove-Item -LiteralPath $licenseTemp -Recurse -Force
+    }
+    Expand-Archive -LiteralPath $nodeZip -DestinationPath $licenseTemp -Force
+    $candidate = Join-Path $licenseTemp "node-v$NodeVersion-win-x64\LICENSE"
+    if (Test-Path -LiteralPath $candidate) {
+        Copy-Item -LiteralPath $candidate -Destination $nodeLicense -Force
+        $licenseFound = $true
+    }
+    Remove-Item -LiteralPath $licenseTemp -Recurse -Force
 }
 if (-not $licenseFound) {
     try {
@@ -115,7 +131,7 @@ Set-Content -Path (Join-Path $out "Lodestar-Setup.cmd") -Value $launcher -Encodi
 $start = @'
 Lodestar 便携版（Windows x64）
 
-1. 确认已安装 QQ 9.9.37-54395 和 AstrBot（默认 D:\qq / D:\AstrBot）。
+1. 确认已安装 QQ 9.9.37-54395 和 AstrBot（安装器会自动查找目录）。
 2. 双击 Lodestar-Setup.cmd。
 3. 允许 UAC，并在弹出的 QQ 窗口登录测试号。
 4. 面板：http://127.0.0.1:18081；管理 token 在 setup 窗口打印。

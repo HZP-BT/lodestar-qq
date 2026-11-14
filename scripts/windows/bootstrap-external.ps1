@@ -1,6 +1,6 @@
 ﻿param(
-    [string]$QQRoot = "D:\qq",
-    [string]$AstrBotRoot = "D:\AstrBot",
+    [string]$QQRoot = "",
+    [string]$AstrBotRoot = "",
     [string]$SelfId = "",
     [switch]$DryRun,
     [switch]$InstallOnly,
@@ -124,11 +124,226 @@ function Get-QQVersionDir {
     if (-not (Test-Path -LiteralPath $versionsRoot)) {
         Fail "找不到 QQ versions 目录：$versionsRoot"
     }
-    $versionDir = Get-ChildItem -LiteralPath $versionsRoot -Directory |
-        Sort-Object Name -Descending |
-        Select-Object -First 1
-    if (-not $versionDir) { Fail "QQ versions 目录为空：$versionsRoot" }
+    $versions = Get-ChildItem -LiteralPath $versionsRoot -Directory |
+        Sort-Object Name -Descending
+    if (-not $versions) { Fail "QQ versions 目录为空：$versionsRoot" }
+    $versionDir = $versions | Where-Object { $_.Name -eq "9.9.37-54395" } | Select-Object -First 1
+    if (-not $versionDir) {
+        $names = ($versions.Name -join ", ")
+        Fail "当前 QQ 版本为 $names；loader 补丁仅支持 9.9.37-54395，未找到该版本。"
+    }
     return $versionDir
+}
+
+function Convert-ToInstallPath([string]$Value) {
+    if (-not $Value) { return "" }
+    $path = $Value.Trim()
+    if ($path -match '^"([^"]+)"') { $path = $Matches[1] }
+    $path = $path -replace ',\d+$', ''
+    if ($path -match '\.exe(\s|$|,)') {
+        $path = ($path -split '\.exe')[0] + '.exe'
+        $path = Split-Path -Parent $path
+    }
+    if (Test-Path -LiteralPath $path -PathType Leaf) {
+        $path = Split-Path -Parent $path
+    }
+    if (Test-Path -LiteralPath $path -PathType Container) {
+        return (Resolve-Path -LiteralPath $path).Path
+    }
+    return ""
+}
+
+function Test-QQRoot([string]$Path) {
+    if (-not $Path) { return $false }
+    $candidate = $Path.TrimEnd('\')
+    return (
+        (Test-Path -LiteralPath (Join-Path $candidate "QQ.exe")) -and
+        (Test-Path -LiteralPath (Join-Path $candidate "versions"))
+    )
+}
+
+function Get-QQRootCandidates {
+    $candidates = New-Object System.Collections.Generic.List[string]
+
+    try {
+        Get-Process QQ -ErrorAction SilentlyContinue | ForEach-Object {
+            if ($_.Path) { $candidates.Add((Split-Path -Parent $_.Path)) }
+        }
+    } catch {}
+
+    $keys = @(
+        "HKLM:\SOFTWARE\WOW6432Node\Tencent\QQNT",
+        "HKLM:\SOFTWARE\Tencent\QQNT",
+        "HKCU:\Software\Tencent\QQNT",
+        "HKLM:\SOFTWARE\WOW6432Node\Tencent\QQ",
+        "HKLM:\SOFTWARE\Tencent\QQ",
+        "HKCU:\Software\Tencent\QQ",
+        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\QQ.exe",
+        "HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\QQ.exe"
+    )
+    foreach ($key in $keys) {
+        if (-not (Test-Path $key)) { continue }
+        $props = Get-ItemProperty $key -ErrorAction SilentlyContinue
+        if (-not $props) { continue }
+        $props.PSObject.Properties | Where-Object { $_.Name -notmatch '^PS' } | ForEach-Object {
+            if ($_.Value -is [string]) {
+                $converted = Convert-ToInstallPath ([string]$_.Value)
+                if ($converted) { $candidates.Add($converted) }
+            }
+        }
+    }
+
+    $uninstallRoots = @(
+        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+        "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
+        "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall"
+    )
+    foreach ($base in $uninstallRoots) {
+        Get-ChildItem $base -ErrorAction SilentlyContinue | ForEach-Object {
+            $entry = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
+            if ($entry -and $entry.DisplayName -and $entry.DisplayName -match 'QQ|Tencent QQ|腾讯QQ') {
+                foreach ($value in @($entry.InstallLocation, $entry.DisplayIcon, $entry.UninstallString)) {
+                    if ($value -is [string]) {
+                        $converted = Convert-ToInstallPath $value
+                        if ($converted) { $candidates.Add($converted) }
+                    }
+                }
+            }
+        }
+    }
+
+    $common = @(
+        "D:\qq",
+        "D:\Tencent\QQ",
+        "E:\qq",
+        "E:\Tencent\QQ"
+    )
+    if ($env:ProgramFiles) { $common += (Join-Path $env:ProgramFiles "Tencent\QQ") }
+    if (${env:ProgramFiles(x86)}) { $common += (Join-Path ${env:ProgramFiles(x86)} "Tencent\QQ") }
+    if ($env:LOCALAPPDATA) {
+        $common += (Join-Path $env:LOCALAPPDATA "Tencent\QQ")
+        $common += (Join-Path $env:LOCALAPPDATA "Programs\QQ")
+    }
+    if ($env:APPDATA) { $common += (Join-Path $env:APPDATA "Tencent\QQ") }
+    foreach ($value in $common) { if ($value) { $candidates.Add($value) } }
+
+    $drives = Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue |
+        Where-Object { $_.Root -match '^[A-Za-z]:\\$' }
+    foreach ($drive in $drives) {
+        $root = $drive.Root
+        foreach ($relative in @("qq", "QQ", "Tencent\QQ", "Program Files\Tencent\QQ", "Program Files (x86)\Tencent\QQ")) {
+            $candidates.Add((Join-Path $root $relative))
+        }
+        Get-ChildItem $root -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+            $candidates.Add($_.FullName)
+            Get-ChildItem $_.FullName -Directory -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -match 'tencent|qq' } |
+                ForEach-Object { $candidates.Add($_.FullName) }
+        }
+    }
+
+    return $candidates | Where-Object { $_ } | Select-Object -Unique
+}
+
+function Resolve-QQRoot([string]$Configured) {
+    if ($Configured) {
+        $candidate = Convert-ToInstallPath $Configured
+        if (Test-QQRoot $candidate) { return $candidate }
+        Fail "指定的 QQ 目录无效：$Configured（需要包含 QQ.exe 和 versions）。"
+    }
+
+    $candidates = @(Get-QQRootCandidates)
+    $preferred = $candidates |
+        Where-Object {
+            (Test-QQRoot $_) -and
+            (Test-Path -LiteralPath (Join-Path $_ "versions\9.9.37-54395"))
+        } |
+        Select-Object -First 1
+    if ($preferred) { return $preferred }
+
+    $valid = $candidates | Where-Object { Test-QQRoot $_ } | Select-Object -First 1
+    if ($valid) { return $valid }
+
+    Fail "找不到 QQ 安装目录。请确认已安装 QQ 9.9.37-54395，或用 -QQRoot 指定（目录需包含 QQ.exe 和 versions）。"
+}
+
+function Test-AstrBotRoot([string]$Path) {
+    if (-not $Path) { return $false }
+    $candidate = $Path.TrimEnd('\')
+    return (
+        (Test-Path -LiteralPath (Join-Path $candidate "astrbot-desktop-tauri.exe")) -or
+        (Test-Path -LiteralPath (Join-Path $candidate "backend\app\main.py"))
+    )
+}
+
+function Get-AstrBotRootCandidates {
+    $candidates = New-Object System.Collections.Generic.List[string]
+
+    try {
+        Get-Process astrbot-desktop-tauri -ErrorAction SilentlyContinue | ForEach-Object {
+            if ($_.Path) { $candidates.Add((Split-Path -Parent $_.Path)) }
+        }
+    } catch {}
+
+    $uninstallRoots = @(
+        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+        "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
+        "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall"
+    )
+    foreach ($base in $uninstallRoots) {
+        Get-ChildItem $base -ErrorAction SilentlyContinue | ForEach-Object {
+            $entry = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
+            if ($entry -and $entry.DisplayName -and $entry.DisplayName -match 'AstrBot') {
+                foreach ($value in @($entry.InstallLocation, $entry.DisplayIcon, $entry.UninstallString)) {
+                    if ($value -is [string]) {
+                        $converted = Convert-ToInstallPath $value
+                        if ($converted) { $candidates.Add($converted) }
+                    }
+                }
+            }
+        }
+    }
+
+    $common = @(
+        "D:\AstrBot",
+        "E:\AstrBot",
+        "C:\Program Files\AstrBot",
+        "C:\Program Files (x86)\AstrBot",
+        "D:\Program Files\AstrBot"
+    )
+    if ($env:LOCALAPPDATA) {
+        $common += (Join-Path $env:LOCALAPPDATA "Programs\AstrBot")
+        $common += (Join-Path $env:LOCALAPPDATA "AstrBot")
+    }
+    if ($env:USERPROFILE) { $common += (Join-Path $env:USERPROFILE "AstrBot") }
+    foreach ($value in $common) { if ($value) { $candidates.Add($value) } }
+
+    $drives = Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue |
+        Where-Object { $_.Root -match '^[A-Za-z]:\\$' }
+    foreach ($drive in $drives) {
+        $root = $drive.Root
+        Get-ChildItem $root -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+            $candidates.Add($_.FullName)
+            Get-ChildItem $_.FullName -Directory -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -match 'astrbot' } |
+                ForEach-Object { $candidates.Add($_.FullName) }
+        }
+    }
+
+    return $candidates | Where-Object { $_ } | Select-Object -Unique
+}
+
+function Resolve-AstrBotRoot([string]$Configured) {
+    if ($Configured) {
+        $candidate = Convert-ToInstallPath $Configured
+        if (Test-AstrBotRoot $candidate) { return $candidate }
+        Fail "指定的 AstrBot 目录无效：$Configured（需要 astrbot-desktop-tauri.exe 或 backend\app\main.py）。"
+    }
+
+    $candidates = @(Get-AstrBotRootCandidates)
+    $valid = $candidates | Where-Object { Test-AstrBotRoot $_ } | Select-Object -First 1
+    if ($valid) { return $valid }
+    return ""
 }
 
 function Get-LoaderState {
@@ -229,6 +444,7 @@ function Install-Loader([string]$Id) {
 
 if ($InstallOnly) {
     if (-not $SelfId) { Fail "InstallOnly requires -SelfId" }
+    $QQRoot = Resolve-QQRoot $QQRoot
     $logPath = "D:\qq-loader\install.log"
     try {
         New-Item -ItemType Directory -Force (Split-Path -Parent $logPath) | Out-Null
@@ -244,10 +460,16 @@ if ($InstallOnly) {
     exit 0
 }
 
+$QQRoot = Resolve-QQRoot $QQRoot
+$AstrBotRoot = Resolve-AstrBotRoot $AstrBotRoot
 Write-Host ""
 Write-Host "Lodestar external bootstrap" -ForegroundColor White
 Write-Host "QQ:      $QQRoot"
-Write-Host "AstrBot: $AstrBotRoot"
+if ($AstrBotRoot) {
+    Write-Host "AstrBot: $AstrBotRoot"
+} else {
+    Write-Host "AstrBot: 未检测到安装目录（若未运行，请用 -AstrBotRoot 指定）"
+}
 
 # 1. Existing config.
 $config = Read-Json $configPath
@@ -339,9 +561,12 @@ if (-not $astrbotEnabled) {
     Fail "AstrBot 的 aiocqhttp 适配器未启用。请在 AstrBot 中启用 OneBot v11 适配器后重试。"
 }
 if (-not (Test-TcpPort $astrbotPort)) {
+    if (-not $AstrBotRoot) {
+        Fail "AstrBot 未运行，且未检测到安装目录。请先启动 AstrBot，或用 -AstrBotRoot 指定路径。"
+    }
     $astrbotExe = Join-Path $AstrBotRoot "astrbot-desktop-tauri.exe"
     if (-not (Test-Path -LiteralPath $astrbotExe)) {
-        Fail "AstrBot 未运行，且找不到 $astrbotExe。请先启动 AstrBot。"
+        Fail "AstrBot 未运行，且找不到 $astrbotExe。请先启动 AstrBot，或用 -AstrBotRoot 指定。"
     }
     Write-Step "启动 AstrBot"
     Start-Process -FilePath $astrbotExe | Out-Null
@@ -368,7 +593,7 @@ if ($SkipLoaderInstall) {
                 "-File", "`"$PSCommandPath`"",
                 "-InstallOnly",
                 "-SelfId", $detectedSelfId,
-                "-QQRoot", $QQRoot
+                "-QQRoot", "`"$QQRoot`""
             )
             try {
                 $process = Start-Process powershell.exe -Verb RunAs -PassThru -ArgumentList $arguments

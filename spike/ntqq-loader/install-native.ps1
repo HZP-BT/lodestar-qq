@@ -27,11 +27,15 @@ $versionsRoot = Join-Path $QQRoot "versions"
 if (-not (Test-Path $versionsRoot)) {
     throw "QQ versions directory not found: $versionsRoot"
 }
-$versionDir = Get-ChildItem $versionsRoot -Directory |
-    Sort-Object Name -Descending |
-    Select-Object -First 1
-if (-not $versionDir) {
+$versions = Get-ChildItem $versionsRoot -Directory |
+    Sort-Object Name -Descending
+if (-not $versions) {
     throw "No QQ version directory found under $versionsRoot"
+}
+$versionDir = $versions | Where-Object { $_.Name -eq "9.9.37-54395" } | Select-Object -First 1
+if (-not $versionDir) {
+    $names = ($versions.Name -join ", ")
+    throw "QQ 9.9.37-54395 not found under $versionsRoot (found: $names). The patcher only supports this build."
 }
 $appDir = Join-Path $versionDir.FullName "resources\app"
 $dll = Join-Path $versionDir.FullName "QQNT.dll"
