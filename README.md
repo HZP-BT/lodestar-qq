@@ -34,7 +34,7 @@ Lodestar 是一个 **Apache-2.0 的 OneBot v11 运行时**，面向“附着真�
 
 ## 为什么做 Lodestar
 
-- NapCat 无头版频繁掉线、账号被封；SnowLuma 存在静默假死、QQ 升级后注入失效的问题。
+- NapCat 无头版频繁掉线、账号被封；SnowLuma 转为私有 不再公开。
 - 现有方案的保活边界通常在“进程内 Hook”：进程和 WebSocket 都活着，但数据面已经停止。Lodestar 用**独立探针**从外部验证数据面，而不是依赖 `status.good`。
 - 许可证：Core 使用 Apache-2.0；不打包 SnowLuma、NapCat 等限制性许可证代码。可选注入后端放在独立包/独立仓库，按各自许可证分发。
 
