@@ -1,0 +1,47 @@
+name: Portable package
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.18.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify
+        run: pnpm verify
+
+      - name: Build portable external package
+        shell: pwsh
+        run: |
+          ./scripts/release/package-external.ps1 -OutputDir release-portable
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $zip = "lodestar-portable-$version-windows-x64.zip"
+          Compress-Archive -Path release-portable/* -DestinationPath $zip
+          $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content -Path SHA256SUMS.txt -Value "$hash  $zip" -Encoding ASCII
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lodestar-portable-windows
+          path: |
+            lodestar-portable-*.zip
+            SHA256SUMS.txt
+          if-no-files-found: error

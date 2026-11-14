@@ -1,0 +1,33 @@
+{
+  "entrypoint": "packages/core/dist/main.js",
+  "onebot": {
+    "url": "ws://127.0.0.1:6199/ws",
+    "token": "",
+    "selfId": 0
+  },
+  "sendGuard": {
+    "groupWhitelist": [],
+    "privateEnabled": false,
+    "privateWhitelist": [],
+    "atOnly": true,
+    "dailyQuota": 200,
+    "perGroupDailyQuota": 80,
+    "minIntervalMs": 2000,
+    "randomDelayMs": 1500,
+    "duplicateWindowMs": 60000,
+    "sendFailureThreshold": 3,
+    "auditRetentionDays": 30,
+    "quietHours": {
+      "startHour": 0,
+      "endHour": 8
+    },
+    "stopFile": "data/STOP"
+  },
+  "health": {
+    "port": 18080
+  },
+  "control": {
+    "port": 18090
+  },
+  "databasePath": "data/polaris.db"
+}

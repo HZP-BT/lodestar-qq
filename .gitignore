@@ -1,0 +1,17 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+data/
+logs/
+/release/
+.tmp/
+config/polaris.json
+config/upstream.json
+config/send-guard.json
+*.log
+.DS_Store
+Thumbs.db

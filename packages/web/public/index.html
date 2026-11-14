@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lodestar 控制面板</title>
+    <link rel="icon" type="image/jpeg" href="./logo.jpg" />
+    <script>
+      try {
+        const saved =
+          localStorage.getItem('lodestar.theme') ?? localStorage.getItem('polaris.theme');
+        if (saved === 'light' || saved === 'dark') {
+          document.documentElement.dataset.theme = saved;
+        }
+      } catch {
+        // localStorage may be unavailable; keep the dark default.
+      }
+    </script>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <img class="brand-logo" src="./logo.jpg" alt="" />
+        <div>
+          <strong>Lodestar</strong>
+          <span>SendGuard control panel</span>
+        </div>
+      </div>
+      <nav class="nav" aria-label="主导航">
+        <a href="#/overview" data-route="overview">总览</a>
+        <a href="#/protocol" data-route="protocol">协议端配置</a>
+        <a href="#/sendguard" data-route="sendguard">SendGuard</a>
+        <a href="#/audit" data-route="audit">审计</a>
+        <a href="#/metrics" data-route="metrics">指标</a>
+        <a href="#/system" data-route="system">系统</a>
+      </nav>
+      <div class="topbar-actions">
+        <button
+          id="theme-toggle"
+          class="btn btn-ghost theme-toggle"
+          type="button"
+          aria-label="切换主题"
+          title="切换主题"
+        >
+          ☀
+        </button>
+        <span id="conn-state" class="conn-state" title="连接状态">
+          <span class="dot"></span><span id="conn-label">未连接</span>
+        </span>
+        <button id="onboarding-open" class="btn btn-ghost" type="button">引导</button>
+      </div>
+    </header>
+
+    <main id="view" class="view" aria-live="polite"></main>
+    <div id="toast" class="toast" hidden></div>
+
+    <div id="auth-overlay" class="overlay" hidden>
+      <form id="auth-form" class="modal auth-modal">
+        <img class="auth-logo" src="./logo.jpg" alt="Lodestar" />
+        <h2>本地管理密码</h2>
+        <p>
+          面板只监听 127.0.0.1。输入启动窗口打印的 Token（或 Core 启动时配置的
+          <code>LODESTAR_ADMIN_TOKEN</code>）。external 配置在 <code>config/upstream.json</code> 的
+          <code>admin.token</code>；源码 demo 在 <code>data/demo/admin-token</code>。
+        </p>
+        <label class="field">
+          <span>管理密码</span>
+          <input id="auth-token" type="password" autocomplete="current-password" required />
+        </label>
+        <p id="auth-error" class="auth-error" role="alert" hidden></p>
+        <div class="modal-actions">
+          <button class="btn btn-primary" type="submit">进入面板</button>
+        </div>
+      </form>
+    </div>
+
+    <div id="modal-root"></div>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

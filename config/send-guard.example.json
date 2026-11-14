@@ -1,0 +1,14 @@
+{
+  "groupWhitelist": [],
+  "privateEnabled": true,
+  "privateWhitelist": [],
+  "atOnly": false,
+  "dailyQuota": 20,
+  "perGroupDailyQuota": 20,
+  "minIntervalMs": 2000,
+  "randomDelayMs": 1000,
+  "duplicateWindowMs": 60000,
+  "sendFailureThreshold": 3,
+  "auditRetentionDays": 30,
+  "quietHours": null
+}
