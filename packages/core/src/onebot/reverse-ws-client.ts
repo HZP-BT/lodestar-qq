@@ -5,7 +5,7 @@ import { nullLogger } from '../logger.js';
 import type { Logger } from '../logger.js';
 import { VERSION } from '../version.js';
 import { ActionRouter, RETCODE } from './action-router.js';
-import type { ActionHandler, SendGuardLike } from './action-router.js';
+import type { ActionHandler } from './action-router.js';
 import { buildAuthHeaders, withQueryToken } from './auth.js';
 import type { TokenPlacement, TokenScheme } from './auth.js';
 import { ExponentialBackoff } from './backoff.js';
@@ -65,8 +65,6 @@ export interface ReverseWsClientOptions {
   heartbeat?: Partial<HeartbeatOptions>;
   maxConcurrentActions?: number;
   actionTimeoutMs?: number;
-  /** Core-owned send guard; applies to all adapters/backends. */
-  sendGuard?: SendGuardLike;
   /** Adapter-confirmed login state. Defaults to UNKNOWN (online=false). */
   loginProvider?: () => LoginState;
   logger?: Logger;
@@ -213,7 +211,7 @@ export class ReverseWsClient {
       jitter: this.reconnect.jitter,
     });
     this.semaphore = new Semaphore(this.maxConcurrentActions);
-    this.router = new ActionRouter(options.sendGuard);
+    this.router = new ActionRouter();
 
     this.openListeners = new ListenerSet(this.logger, 'open');
     this.closeListeners = new ListenerSet(this.logger, 'close');

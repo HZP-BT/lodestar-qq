@@ -57,10 +57,6 @@ describe('CoreRuntime ↔ MockAdapter (E2E)', () => {
         heartbeat: { enabled: false },
       },
       databasePath: ':memory:',
-      sendGuard: {
-        stopFile: join(tempDir, 'STOP'),
-        quietHours: null,
-      },
       logger: nullLogger,
     });
     await runtime.start();

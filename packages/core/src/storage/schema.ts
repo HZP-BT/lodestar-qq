@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export const SCHEMA_SQL = `
 PRAGMA foreign_keys = ON;
@@ -52,40 +52,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_message_ref_native
   ON message_ref(account_id, native_message_id)
   WHERE native_message_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS message_ref_expiry ON message_ref(expires_at);
-
-CREATE TABLE IF NOT EXISTS send_quota (
-  quota_key TEXT PRIMARY KEY,
-  count INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS send_rate (
-  rate_key TEXT PRIMARY KEY,
-  last_sent_at INTEGER NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS send_circuit (
-  id INTEGER PRIMARY KEY CHECK (id = 1),
-  state TEXT NOT NULL CHECK (state IN ('CLOSED','OPEN')),
-  reason TEXT,
-  opened_at INTEGER,
-  updated_at INTEGER NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS send_audit (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  account_id INTEGER NOT NULL,
-  action TEXT NOT NULL,
-  target_type TEXT NOT NULL,
-  target_id TEXT NOT NULL,
-  decision TEXT NOT NULL CHECK (decision IN ('allowed','blocked')),
-  reason TEXT NOT NULL,
-  message_hash TEXT,
-  message_length INTEGER,
-  retcode INTEGER,
-  created_at INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS send_audit_time ON send_audit(created_at);
 
 CREATE TABLE IF NOT EXISTS admin_audit (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

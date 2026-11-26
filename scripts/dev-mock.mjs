@@ -150,12 +150,6 @@ async function main() {
       heartbeat: { enabled: true },
     },
     databasePath: env('DB_PATH') ?? resolve(dataDir, 'demo.db'),
-    sendGuard: {
-      stopFile: env('STOP_FILE') ?? resolve(dataDir, 'STOP'),
-      privateEnabled: true,
-      atOnly: false,
-      quietHours: null,
-    },
     logger,
   });
   await runtime.start();
@@ -174,7 +168,6 @@ async function main() {
     host: adminHost,
     port: adminPort,
     allowNonLoopback: env('ADMIN_ALLOW_NON_LOOPBACK') === '1',
-    configPath: env('SEND_GUARD_CONFIG') ?? resolve(dataDir, 'demo-send-guard.json'),
     protocolConfigPath: env('PROTOCOL_CONFIG') ?? resolve(dataDir, 'demo-upstream.json'),
     demo: true,
     webRoot: env('WEB_ROOT') ?? 'packages/web/dist',

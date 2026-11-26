@@ -15,7 +15,6 @@ services:
       LODESTAR_SELF_ID: '10001'
       LODESTAR_ONEBOT_URL: 'ws://127.0.0.1:6199/ws'
       LODESTAR_DB_PATH: '/app/data/polaris.db'
-      LODESTAR_STOP_FILE: '/app/data/STOP'
       LODESTAR_HEALTH_PORT: '18080'
       LODESTAR_CONTROL_PORT: '18090'
       LODESTAR_DATA_DIR: '/app/data'
@@ -23,7 +22,6 @@ services:
       LODESTAR_ADMIN_PORT: '18081'
       LODESTAR_ADMIN_ALLOW_NON_LOOPBACK: '1'
       LODESTAR_NO_OPEN: '1'
-      LODESTAR_SEND_GUARD_CONFIG: '/app/data/demo-send-guard.json'
       LODESTAR_PROTOCOL_CONFIG: '/app/data/demo-upstream.json'
     healthcheck:
       test:

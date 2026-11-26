@@ -25,19 +25,6 @@ try {
   process.exit(2);
 }
 
-function readSendGuardConfig(nextConfig) {
-  const sendGuardPath = nextConfig.admin?.configPath ?? 'config/send-guard.json';
-  try {
-    const parsed = JSON.parse(readFileSync(sendGuardPath, 'utf8'));
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      return parsed;
-    }
-  } catch {
-    // Fall back to the bootstrap config if the admin file is not readable.
-  }
-  return {};
-}
-
 function createRuntime(nextConfig) {
   const adapter = new OneBotUpstreamAdapter({
     url: nextConfig.upstream.url,
@@ -45,7 +32,6 @@ function createRuntime(nextConfig) {
     ...(nextConfig.upstream.token ? { accessToken: nextConfig.upstream.token } : {}),
     logger,
   });
-  const guardFile = readSendGuardConfig(nextConfig);
 
   return new CoreRuntime({
     adapter,
@@ -56,11 +42,6 @@ function createRuntime(nextConfig) {
       heartbeat: { enabled: true },
     },
     databasePath: nextConfig.databasePath ?? 'data/polaris.db',
-    sendGuard: {
-      ...(nextConfig.sendGuard ?? {}),
-      ...guardFile,
-      stopFile: guardFile.stopFile ?? nextConfig.sendGuard?.stopFile ?? 'data/STOP',
-    },
     logger,
   });
 }
@@ -115,11 +96,8 @@ async function main() {
   const adminRuntime = {
     status: () => runtime.status(),
     adapter: { health: () => runtime.adapter.health() },
-    get guard() {
-      return runtime.guard;
-    },
-    get sendGuardStoreInstance() {
-      return runtime.sendGuardStoreInstance;
+    get adminAuditStore() {
+      return runtime.adminAuditStoreInstance;
     },
     restart: restartRuntime,
   };
@@ -144,7 +122,6 @@ async function main() {
       })(),
       host: config.admin?.host ?? '127.0.0.1',
       port: config.admin?.port ?? 18081,
-      configPath: config.admin?.configPath ?? 'config/send-guard.json',
       protocolConfigPath: config.admin?.protocolConfigPath ?? configPath,
       webRoot: config.admin?.webRoot ?? 'packages/web/dist',
       shutdown: () => shutdown('admin'),

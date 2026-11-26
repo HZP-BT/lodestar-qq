@@ -36,22 +36,6 @@ export interface ActionContext {
   echo: unknown;
 }
 
-export interface SendGuardLike {
-  isSendAction(action: string): boolean;
-  check(
-    action: string,
-    params: Record<string, unknown>,
-    selfId: number,
-  ):
-    | { allowed: true }
-    | {
-        allowed: false;
-        reason: string;
-        retcode: number;
-        retryAfterMs?: number;
-      };
-}
-
 export type ActionHandler = (params: Record<string, unknown>, context: ActionContext) => unknown;
 
 /**
@@ -62,8 +46,6 @@ export type ActionHandler = (params: Record<string, unknown>, context: ActionCon
 export class ActionRouter {
   private readonly handlers = new Map<string, ActionHandler>();
   private fallback: ActionHandler | null = null;
-
-  constructor(private readonly sendGuard?: SendGuardLike) {}
 
   register(action: string, handler: ActionHandler): this {
     this.handlers.set(action, handler);
@@ -119,20 +101,6 @@ export class ActionRouter {
     }
 
     const params = request.params === undefined ? {} : request.params;
-
-    if (this.sendGuard?.isSendAction(request.action)) {
-      const decision = this.sendGuard.check(request.action, params, selfId);
-
-      if (!decision.allowed) {
-        return {
-          status: 'failed',
-          retcode: decision.retcode,
-          data: null,
-          message: `Send blocked: ${decision.reason}`,
-          ...echoPart,
-        };
-      }
-    }
 
     try {
       const data = await handler(params, {

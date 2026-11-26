@@ -7,6 +7,9 @@
 > 报告 `docs/design/ntqq-liteloader-validation-2026-11-13.md` 第 6.2.2 节；
 > 冻结基线 `D:\qq-patch-baseline\2026-11-13-9.9.33-52230`。
 
+> 注（2026-11-27）：本文中的 SendGuard / 白名单 / 配额 / STOP 哨兵设计已于
+> [ADR 0009](../adr/0009-remove-send-guard.md) 移除；相关章节保留为历史设计记录。
+
 ## 1. S0 结案：已证明 / 未证明
 
 ### 1.1 已证明（有端到端证据）
@@ -43,7 +46,7 @@
 
 ## 2. 硬结论：本项目的价值不是功能数量
 
-**本项目价值 = 附着真实 QQ + SendGuard + outbox + 本地面板。**
+**本项目价值 = 附着真实 QQ + outbox + 本地面板。**
 
 - 不是“功能对标 LuckyLilliaBot”；
 - 不是“再做一个 LLOneBot”；

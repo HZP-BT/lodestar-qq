@@ -5,14 +5,8 @@ param(
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-$dataDir = Join-Path $root "data"
 $logDir = Join-Path $root "logs"
 $pidFile = Join-Path $logDir "polaris-core.pid"
-New-Item -ItemType Directory -Force $dataDir | Out-Null
-
-# Core SendGuard polls this sentinel every 5s.
-New-Item -ItemType File -Force (Join-Path $dataDir "STOP") | Out-Null
-Write-Host "Kill switch written: $(Join-Path $dataDir 'STOP')"
 
 $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 if ($task) {

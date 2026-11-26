@@ -21,14 +21,6 @@ function status(overrides: Partial<CoreRuntimeStatus> = {}): CoreRuntimeStatus {
       state: 'ONLINE',
       loginState: 'LOGGED_IN',
     },
-    sendGuard: {
-      circuit: 'CLOSED',
-      circuitReason: null,
-      stopDisabled: false,
-      allowed: 0,
-      blocked: {},
-      auditTotal: 0,
-    },
     ...overrides,
   };
 }
@@ -59,7 +51,6 @@ describe('HealthServer', () => {
     expect(metrics.status).toBe(200);
     expect(text).toContain('polaris_health_state{state="OFFLINE"} 1');
     expect(text).toContain('polaris_ready 0');
-    expect(text).toContain('polaris_send_guard_circuit{state="CLOSED"} 1');
   });
 
   it('keeps healthz 200 on auth_failed while readyz is 503', async () => {

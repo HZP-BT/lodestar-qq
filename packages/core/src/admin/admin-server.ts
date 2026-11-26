@@ -14,14 +14,12 @@ import type { Logger } from '../logger.js';
 import { nullLogger } from '../logger.js';
 import { renderMetrics } from '../observability/health-server.js';
 import type { CoreRuntimeStatus } from '../runtime/core-runtime.js';
-import type { SendGuard, SendGuardConfig } from '../send-guard.js';
-import type { AuditQuery, SendGuardStore } from '../storage/send-guard-store.js';
+import type { AdminAuditStore } from '../storage/admin-audit-store.js';
 
 export interface AdminRuntimeView {
   status(): CoreRuntimeStatus;
   adapter: { health(): Promise<AdapterHealth> };
-  guard: SendGuard;
-  sendGuardStoreInstance: SendGuardStore | null;
+  adminAuditStore: AdminAuditStore | null;
   restart?(): Promise<{ restartedAt: string; detail?: string }>;
 }
 
@@ -36,7 +34,6 @@ export interface AdminServerOptions {
    * admin server; it is ignored unless host is non-loopback.
    */
   allowNonLoopback?: boolean;
-  configPath?: string;
   protocolConfigPath?: string;
   tokenFile?: string;
   shutdown?: () => void | Promise<void>;
@@ -46,34 +43,6 @@ export interface AdminServerOptions {
   logger?: Logger;
   now?: () => number;
 }
-
-const guardConfigSchema = z
-  .object({
-    groupWhitelist: z.array(z.number().int().positive()).max(200),
-    privateEnabled: z.boolean(),
-    privateWhitelist: z.array(z.number().int().positive()).max(200),
-    atOnly: z.boolean().optional(),
-    dailyQuota: z.number().int().min(0).max(10_000),
-    perGroupDailyQuota: z.number().int().min(0).max(10_000).nullable(),
-    minIntervalMs: z.number().int().min(0).max(3_600_000),
-    randomDelayMs: z.number().int().min(0).max(60_000),
-    quietHours: z
-      .object({
-        startHour: z.number().int().min(0).max(23),
-        endHour: z.number().int().min(0).max(23),
-      })
-      .nullable(),
-    duplicateWindowMs: z.number().int().min(0).max(86_400_000),
-    sendFailureThreshold: z.number().int().min(1).max(100),
-    auditRetentionDays: z.number().int().min(1).max(3_650),
-  })
-  .strict();
-
-const guardPatchSchema = guardConfigSchema.partial();
-
-const confirmSchema = z.object({
-  confirm: z.string(),
-});
 
 const protocolPatchSchema = z
   .object({
@@ -112,17 +81,15 @@ const passwordSchema = z
 
 const shutdownSchema = z.object({ confirm: z.literal('TERMINATE') }).strict();
 
-type GuardConfigFile = z.infer<typeof guardConfigSchema>;
-
 /**
- * Local-only admin HTTP server for the SendGuard control panel.
+ * Local-only admin HTTP server for the status panel.
  *
  * Security boundary:
  * - binds loopback by default (127.0.0.1 / ::1 / localhost);
  * - the container demo may opt into a non-loopback bind with an explicit
  *   allowNonLoopback flag, while the host must publish the port on loopback;
  * - every /api request needs a bearer/X-Admin-Token token;
- * - audit responses hash targets and never return message bodies or plain UIDs;
+ * - admin audit responses hash targets and never return tokens or bodies;
  * - no public deployment, no multi-user login, no CORS.
  */
 export class AdminServer {
@@ -136,7 +103,6 @@ export class AdminServer {
   private readonly host: string;
   private readonly allowNonLoopback: boolean;
   private readonly requestedPort: number;
-  private readonly configPath: string;
   private readonly protocolConfigPath: string;
   private readonly webRoot: string;
   private readonly logger: Logger;
@@ -155,7 +121,6 @@ export class AdminServer {
       throw new Error('AdminServer must bind to a loopback address');
     }
     this.requestedPort = options.port ?? 18_081;
-    this.configPath = options.configPath ?? 'config/send-guard.json';
     this.protocolConfigPath = options.protocolConfigPath ?? 'config/upstream.json';
     this.webRoot = resolve(options.webRoot ?? 'packages/web/dist');
     this.logger = options.logger ?? nullLogger;
@@ -178,8 +143,6 @@ export class AdminServer {
   async start(): Promise<void> {
     if (this.server) return;
 
-    this.loadConfigFile();
-
     const server = createServer((request, response) => {
       void this.handle(request, response);
     });
@@ -201,10 +164,10 @@ export class AdminServer {
       );
     }
     this.logger.info(
-      { url: this.url, configPath: this.configPath },
+      { url: this.url },
       isLoopback(this.host)
-        ? 'SendGuard admin panel listening on loopback'
-        : 'SendGuard admin panel listening (container/opt-in non-loopback)',
+        ? 'admin panel listening on loopback'
+        : 'admin panel listening (container/opt-in non-loopback)',
     );
   }
 
@@ -246,11 +209,6 @@ export class AdminServer {
       return;
     }
 
-    if (method === 'GET' && url.pathname === '/api/sendguard') {
-      this.sendJson(response, 200, this.sendGuardPayload());
-      return;
-    }
-
     if (method === 'GET' && url.pathname === '/api/protocol') {
       this.sendJson(response, 200, this.protocolPayload());
       return;
@@ -289,13 +247,8 @@ export class AdminServer {
       return;
     }
 
-    if (method === 'GET' && url.pathname === '/api/audit') {
-      this.sendJson(response, 200, this.auditPayload(url));
-      return;
-    }
-
     if (method === 'GET' && url.pathname === '/api/admin-audit') {
-      const store = this.runtime.sendGuardStoreInstance;
+      const store = this.runtime.adminAuditStore;
       this.sendJson(response, 200, { items: store?.recentAdminAudit(50) ?? [] });
       return;
     }
@@ -308,20 +261,6 @@ export class AdminServer {
         'X-Content-Type-Options': 'nosniff',
       });
       response.end(body);
-      return;
-    }
-
-    if (method === 'POST' && url.pathname.startsWith('/api/sendguard/')) {
-      const body = await this.readJsonOr400(request, response);
-      if (body === null) return;
-      this.handleAction(url.pathname, body, request, response);
-      return;
-    }
-
-    if (method === 'PUT' && url.pathname === '/api/sendguard/config') {
-      const body = await this.readJsonOr400(request, response);
-      if (body === null) return;
-      this.updateConfig(body, request, response);
       return;
     }
 
@@ -435,26 +374,9 @@ export class AdminServer {
       },
       onebot: { clientState: status.clientState },
       health: status.health,
-      sendGuard: status.sendGuard,
       pendingEvents: status.pendingEvents,
       replayableEvents: status.replayableEvents,
       serverTime: new Date(this.now()).toISOString(),
-    };
-  }
-
-  private sendGuardPayload(): Record<string, unknown> {
-    const status = this.runtime.status();
-    const config = this.runtime.guard.configSnapshot();
-    const quota = this.runtime.guard.quotaSnapshot(status.accountId);
-    return {
-      ok: true,
-      circuit: {
-        state: status.sendGuard.circuit,
-        reason: status.sendGuard.circuitReason,
-      },
-      stopDisabled: status.sendGuard.stopDisabled,
-      quota,
-      config,
     };
   }
 
@@ -599,116 +521,6 @@ export class AdminServer {
     writeFileSync(this.protocolConfigPath, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
   }
 
-  private auditPayload(url: URL): Record<string, unknown> {
-    const store = this.runtime.sendGuardStoreInstance;
-    if (!store) {
-      return { items: [], total: 0, limit: 0, offset: 0 };
-    }
-
-    const decision = url.searchParams.get('decision');
-    const action = url.searchParams.get('action') ?? undefined;
-    const query: AuditQuery = {
-      limit: numberParam(url.searchParams.get('limit'), 50),
-      offset: numberParam(url.searchParams.get('offset'), 0),
-      ...(decision === 'allowed' || decision === 'blocked' ? { decision } : {}),
-      ...(action ? { action } : {}),
-    };
-    const page = store.queryAudit(query);
-    return {
-      ...page,
-      items: page.items.map((item) => ({
-        id: item.id,
-        action: item.action,
-        targetType: item.targetType,
-        targetHash: hashId(`${item.targetType}:${item.targetId}`),
-        decision: item.decision,
-        reason: item.reason,
-        messageHash: item.messageHash,
-        messageLength: item.messageLength,
-        retcode: item.retcode,
-        createdAt: item.createdAt,
-      })),
-    };
-  }
-
-  private handleAction(
-    pathname: string,
-    body: Record<string, unknown>,
-    request: IncomingMessage,
-    response: ServerResponse,
-  ): void {
-    const parsed = confirmSchema.safeParse(body);
-    if (!parsed.success) {
-      this.sendJson(response, 400, { error: 'invalid body' });
-      return;
-    }
-
-    if (pathname === '/api/sendguard/stop') {
-      if (parsed.data.confirm !== 'STOP') {
-        this.sendJson(response, 400, { error: 'type STOP to confirm' });
-        return;
-      }
-      this.runtime.guard.writeStopSentinel();
-      this.audit('sendguard.stop', request, { stopFile: true });
-      this.sendJson(response, 200, this.sendGuardPayload());
-      return;
-    }
-
-    if (pathname === '/api/sendguard/resume') {
-      if (parsed.data.confirm !== 'RESUME') {
-        this.sendJson(response, 400, { error: 'type RESUME to confirm' });
-        return;
-      }
-      this.runtime.guard.clearStopSentinel();
-      this.audit('sendguard.resume', request, { stopFile: false });
-      this.sendJson(response, 200, this.sendGuardPayload());
-      return;
-    }
-
-    if (pathname === '/api/sendguard/reset') {
-      if (parsed.data.confirm !== 'RESET') {
-        this.sendJson(response, 400, { error: 'type RESET to confirm' });
-        return;
-      }
-      this.runtime.guard.resetCircuit();
-      this.audit('sendguard.reset', request, { circuit: 'CLOSED' });
-      this.sendJson(response, 200, this.sendGuardPayload());
-      return;
-    }
-
-    this.sendJson(response, 404, { error: 'not found' });
-  }
-
-  private updateConfig(
-    body: Record<string, unknown>,
-    request: IncomingMessage,
-    response: ServerResponse,
-  ): void {
-    const parsed = guardPatchSchema.safeParse(body);
-    if (!parsed.success) {
-      this.sendJson(response, 400, {
-        error: 'invalid config',
-        details: parsed.error.issues.map((issue) => issue.path.join('.')),
-      });
-      return;
-    }
-
-    const patch = definedPatch(parsed.data);
-    if (Object.keys(patch).length === 0) {
-      this.sendJson(response, 400, { error: 'empty config' });
-      return;
-    }
-
-    this.runtime.guard.updateConfig(patch);
-    const config = this.runtime.guard.configSnapshot();
-    this.writeConfigFile(config);
-    this.audit('sendguard.config', request, {
-      changed: Object.keys(patch),
-      config: writableConfig(config),
-    });
-    this.sendJson(response, 200, { ok: true, config });
-  }
-
   private async readJsonOr400(
     request: IncomingMessage,
     response: ServerResponse,
@@ -753,36 +565,8 @@ export class AdminServer {
     });
   }
 
-  private loadConfigFile(): void {
-    if (!existsSync(this.configPath)) return;
-    try {
-      const raw = JSON.parse(readFileSync(this.configPath, 'utf8')) as unknown;
-      const parsed = guardPatchSchema.safeParse(raw);
-      if (!parsed.success) {
-        this.logger.warn(
-          { configPath: this.configPath, issues: parsed.error.issues },
-          'ignoring invalid send-guard config file',
-        );
-        return;
-      }
-      this.runtime.guard.updateConfig(definedPatch(parsed.data));
-      this.logger.info({ configPath: this.configPath }, 'loaded send-guard config');
-    } catch (error) {
-      this.logger.warn(
-        { err: error, configPath: this.configPath },
-        'cannot read send-guard config',
-      );
-    }
-  }
-
-  private writeConfigFile(config: SendGuardConfig): void {
-    const path = this.configPath;
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, `${JSON.stringify(writableConfig(config), null, 2)}\n`, 'utf8');
-  }
-
   private audit(action: string, request: IncomingMessage, details: unknown): void {
-    this.runtime.sendGuardStoreInstance?.writeAdminAudit({
+    this.runtime.adminAuditStore?.writeAdminAudit({
       actor: 'local-admin',
       action,
       ip: request.socket.remoteAddress ?? 'unknown',
@@ -842,10 +626,6 @@ export class AdminServer {
     });
     response.end(payload);
   }
-}
-
-function definedPatch(input: z.infer<typeof guardPatchSchema>): Partial<SendGuardConfig> {
-  return Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined));
 }
 
 function definedProtocolPatch(
@@ -963,30 +743,8 @@ async function checkWebSocket(
   });
 }
 
-function writableConfig(config: SendGuardConfig): GuardConfigFile {
-  return {
-    groupWhitelist: config.groupWhitelist,
-    privateEnabled: config.privateEnabled,
-    privateWhitelist: config.privateWhitelist,
-    atOnly: config.atOnly,
-    dailyQuota: config.dailyQuota,
-    perGroupDailyQuota: config.perGroupDailyQuota,
-    minIntervalMs: config.minIntervalMs,
-    randomDelayMs: config.randomDelayMs,
-    quietHours: config.quietHours,
-    duplicateWindowMs: config.duplicateWindowMs,
-    sendFailureThreshold: config.sendFailureThreshold,
-    auditRetentionDays: config.auditRetentionDays,
-  };
-}
-
 function hashId(value: number | string): string {
   return createHash('sha256').update(String(value)).digest('hex').slice(0, 16);
-}
-
-function numberParam(value: string | null, fallback: number): number {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? Math.trunc(parsed) : fallback;
 }
 
 function isLoopback(host: string): boolean {

@@ -9,21 +9,18 @@ import type { Logger } from '../logger.js';
 import { nullLogger } from '../logger.js';
 import { ReverseWsClient } from '../onebot/reverse-ws-client.js';
 import type { ReverseWsClientOptions } from '../onebot/reverse-ws-client.js';
-import { SendGuard } from '../send-guard.js';
-import type { SendGuardConfig } from '../send-guard.js';
+import { AdminAuditStore } from '../storage/admin-audit-store.js';
 import { openSqliteDatabase } from '../storage/database.js';
 import type { SqliteDatabase } from '../storage/database.js';
 import { EventStore } from '../storage/event-store.js';
 import { OutboxDispatcher } from '../storage/outbox-dispatcher.js';
-import { SendGuardStore } from '../storage/send-guard-store.js';
 import { deriveHealth } from './health.js';
 import type { RuntimeHealth } from './health.js';
 
 export interface CoreRuntimeOptions {
   adapter: AdapterInterface;
-  client: Omit<ReverseWsClientOptions, 'selfId' | 'sendGuard' | 'loginProvider' | 'logger'>;
+  client: Omit<ReverseWsClientOptions, 'selfId' | 'loginProvider' | 'logger'>;
   databasePath?: string;
-  sendGuard?: Partial<SendGuardConfig>;
   logger?: Logger;
   /** How often the adapter's reported login state is refreshed. */
   statusIntervalMs?: number;
@@ -37,7 +34,6 @@ export interface CoreRuntimeStatus {
   pendingEvents: number;
   replayableEvents: number;
   health: RuntimeHealth;
-  sendGuard: ReturnType<SendGuard['snapshot']>;
 }
 
 /**
@@ -46,14 +42,13 @@ export interface CoreRuntimeStatus {
  */
 export class CoreRuntime {
   readonly adapter: AdapterInterface;
-  readonly guard: SendGuard;
 
   private readonly options: CoreRuntimeOptions;
   private readonly logger: Logger;
   private readonly sessionId: string;
   private db: SqliteDatabase | null = null;
   private store: EventStore | null = null;
-  private sendGuardStore: SendGuardStore | null = null;
+  private adminAuditStore: AdminAuditStore | null = null;
   private client: ReverseWsClient | null = null;
   private statusTimer: NodeJS.Timeout | null = null;
   private loginState: AdapterLoginState = 'UNKNOWN';
@@ -64,7 +59,6 @@ export class CoreRuntime {
     this.adapter = options.adapter;
     this.logger = options.logger ?? nullLogger;
     this.sessionId = randomUUID();
-    this.guard = new SendGuard(options.sendGuard, { now: Date.now });
   }
 
   async start(): Promise<void> {
@@ -81,17 +75,12 @@ export class CoreRuntime {
     const store = new EventStore(db);
     this.db = db;
     this.store = store;
-
-    const guardStore = new SendGuardStore(db);
-    this.sendGuardStore = guardStore;
-    this.guard.attachStorage(guardStore);
-    this.guard.startStopWatchdog();
+    this.adminAuditStore = new AdminAuditStore(db);
 
     const client = new ReverseWsClient({
       ...this.options.client,
       selfId: this.adapter.accountId,
       logger: this.logger,
-      sendGuard: this.guard,
       loginProvider: () => this.loginState,
     });
     this.client = client;
@@ -121,23 +110,7 @@ export class CoreRuntime {
       context: { action: string; selfId: number; echo: unknown },
     ): Promise<unknown> => {
       const action = context.action;
-      let result: AdapterActionResult;
-      try {
-        result = await this.adapter.execute(action, params, context);
-      } catch (error) {
-        if (this.guard.isSendAction(action)) {
-          this.guard.reportSendFailure();
-        }
-        throw error;
-      }
-
-      if (this.guard.isSendAction(action)) {
-        if (result.ok) {
-          this.guard.reportSendSuccess();
-        } else {
-          this.guard.reportSendFailure();
-        }
-      }
+      const result: AdapterActionResult = await this.adapter.execute(action, params, context);
 
       if (!result.ok) {
         throw new AdapterActionError(
@@ -188,7 +161,6 @@ export class CoreRuntime {
       clearInterval(this.statusTimer);
       this.statusTimer = null;
     }
-    this.guard.stop();
     await this.adapter.stop();
     await this.client?.stop();
     this.db?.close();
@@ -203,7 +175,6 @@ export class CoreRuntime {
       pendingEvents: this.store?.pendingCount(this.adapter.accountId) ?? 0,
       replayableEvents: this.store?.listReplayable(this.adapter.accountId).length ?? 0,
       health: this.health,
-      sendGuard: this.guard.snapshot(),
     };
   }
 
@@ -225,8 +196,8 @@ export class CoreRuntime {
     return this.store;
   }
 
-  get sendGuardStoreInstance(): SendGuardStore | null {
-    return this.sendGuardStore;
+  get adminAuditStoreInstance(): AdminAuditStore | null {
+    return this.adminAuditStore;
   }
 
   private async refreshAdapterStatus(): Promise<void> {

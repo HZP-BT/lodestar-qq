@@ -147,7 +147,7 @@ mock 对外提供脚本化控制命令（具体传输在实现时定，HTTP/stdi
   - 进程 RSS 不随注入线性增长；
   - 重排缓冲不超过 256 条；禁止任何无界缓冲；
   - **纯 pending 超限**：10,000 条 pending、无可删 sent 时，publish 返回 `backpressure` + `1503`，不删 pending、不静默丢事件；
-  - **STOP**：写入 `data/STOP` 后 ≤5s 新的 send 动作返回 `1508`，且没有消息被静默丢弃；
+  - **STOP** 已随 SendGuard 移除（ADR 0009），不再断言 1508；
   - **清理不删 pending/被引用行**：清理 sent/过期 dedup/message_ref 时，pending outbox 与仍被 pending 引用的 message_ref 保留。
 - 失败判定：OOM、消息静默丢失、背压不传导、缓冲无限增长、pending 被删。
 
@@ -251,7 +251,7 @@ mock 对外提供脚本化控制命令（具体传输在实现时定，HTTP/stdi
 | --- | --- | --- |
 | MOCK-07 断连重放 | Core 侧已完成 | `outbox-dispatcher.test.ts` |
 | MOCK-08 长时间离线 | Core 侧已完成 | 100 条消息重放测试 |
-| MOCK-09 背压/STOP | Core 侧已完成 | `event-sink.test.ts`、`send-guard.test.ts` |
+| MOCK-09 背压/STOP | 背压部分已完成；STOP 已废弃（ADR 0009） | `event-sink.test.ts` |
 | MOCK-10 鉴权失败 | Core 侧已完成 | `reverse-ws-client.test.ts` |
 | MOCK-11 数据面停摆 | 已废弃（ADR 0008 移除探针） | — |
 | MOCK-12 只断事件/canary | 已废弃（ADR 0008 移除探针） | — |

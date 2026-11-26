@@ -65,60 +65,12 @@ try {
     $env:POLARIS_SELF_ID = [string]$config.onebot.selfId
     $env:POLARIS_DB_PATH = [string]$config.databasePath
 
-    if ($config.sendGuard) {
-        if ($null -ne $config.sendGuard.groupWhitelist) {
-            $ids = @($config.sendGuard.groupWhitelist | ForEach-Object { [string]$_ })
-            $env:POLARIS_GROUP_WHITELIST = ($ids -join ",")
-        }
-        if ($null -ne $config.sendGuard.privateWhitelist) {
-            $ids = @($config.sendGuard.privateWhitelist | ForEach-Object { [string]$_ })
-            $env:POLARIS_PRIVATE_WHITELIST = ($ids -join ",")
-        }
-        $env:POLARIS_PRIVATE_ENABLED = if ($config.sendGuard.privateEnabled) { "1" } else { "0" }
-        if ($null -ne $config.sendGuard.dailyQuota) {
-            $env:POLARIS_DAILY_QUOTA = [string]$config.sendGuard.dailyQuota
-        }
-        if ($null -ne $config.sendGuard.perGroupDailyQuota) {
-            $env:POLARIS_PER_GROUP_DAILY_QUOTA = [string]$config.sendGuard.perGroupDailyQuota
-        }
-        if ($null -ne $config.sendGuard.minIntervalMs) {
-            $env:POLARIS_MIN_INTERVAL_MS = [string]$config.sendGuard.minIntervalMs
-        }
-        if ($null -ne $config.sendGuard.randomDelayMs) {
-            $env:POLARIS_RANDOM_DELAY_MS = [string]$config.sendGuard.randomDelayMs
-        }
-        if ($null -ne $config.sendGuard.duplicateWindowMs) {
-            $env:POLARIS_DUPLICATE_WINDOW_MS = [string]$config.sendGuard.duplicateWindowMs
-        }
-        if ($null -ne $config.sendGuard.sendFailureThreshold) {
-            $env:POLARIS_SEND_FAILURE_THRESHOLD = [string]$config.sendGuard.sendFailureThreshold
-        }
-        if ($null -ne $config.sendGuard.auditRetentionDays) {
-            $env:POLARIS_AUDIT_RETENTION_DAYS = [string]$config.sendGuard.auditRetentionDays
-        }
-        if ($config.sendGuard.atOnly -eq $false) {
-            $env:POLARIS_AT_ONLY = "0"
-        } else {
-            $env:POLARIS_AT_ONLY = "1"
-        }
-        if ($config.sendGuard.stopFile) {
-            $env:POLARIS_STOP_FILE = [string]$config.sendGuard.stopFile
-        }
-    }
-
     if ($config.health -and $config.health.port) {
         $env:POLARIS_HEALTH_PORT = [string]$config.health.port
     }
     if ($config.control -and $config.control.port) {
         $env:POLARIS_CONTROL_PORT = [string]$config.control.port
     }
-
-    $stopFile = if ($env:POLARIS_STOP_FILE) {
-        Join-Path $root $env:POLARIS_STOP_FILE
-    } else {
-        Join-Path $dataDir "STOP"
-    }
-    Remove-Item $stopFile -Force -ErrorAction SilentlyContinue
 
     $stdout = Join-Path $logDir "core.out.log"
     $stderr = Join-Path $logDir "core.err.log"

@@ -13,19 +13,8 @@ export type {
   PublishFailureReason,
   PublishResult,
 } from './adapter/types.js';
-export { SendGuard, DEFAULT_SEND_GUARD_CONFIG } from './send-guard.js';
-export type {
-  QuietHours,
-  SendAuditRecord,
-  SendBlockReason,
-  SendCircuitState,
-  SendDecision,
-  SendGuardConfig,
-  SendGuardOptions,
-  SendGuardStorage,
-} from './send-guard.js';
-export { SendGuardStore } from './storage/send-guard-store.js';
-export type { AdminAuditRecord, AuditPage, AuditQuery } from './storage/send-guard-store.js';
+export { AdminAuditStore } from './storage/admin-audit-store.js';
+export type { AdminAuditRecord } from './storage/admin-audit-store.js';
 export { HealthServer } from './observability/health-server.js';
 export type { HealthServerOptions } from './observability/health-server.js';
 export { isReadyStatus, renderMetrics } from './observability/health-server.js';
@@ -53,7 +42,7 @@ export { isAdapterForbiddenEvent } from './adapter/event-policy.js';
 export { computeEventKey } from './adapter/event-key.js';
 export type { EventKeyInput } from './adapter/event-key.js';
 export { ActionRouter, RETCODE } from './onebot/action-router.js';
-export type { ActionContext, ActionHandler, SendGuardLike } from './onebot/action-router.js';
+export type { ActionContext, ActionHandler } from './onebot/action-router.js';
 export { buildAuthHeaders, withQueryToken } from './onebot/auth.js';
 export type { TokenPlacement, TokenScheme } from './onebot/auth.js';
 export { ExponentialBackoff } from './onebot/backoff.js';

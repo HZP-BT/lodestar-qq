@@ -38,7 +38,7 @@ Lodestar/
 ├─ lodestar-external.cjs     ← 预构建的 Core + OneBot 上游适配器
 ├─ web/                      ← 本地控制面板静态文件
 ├─ config/                   ← 配置模板；首次运行生成 upstream.json
-├─ data/                     ← SQLite、审计、STOP 等运行时数据
+├─ data/                     ← SQLite（事件去重与 outbox）等运行时数据
 ├─ node_modules/ws/          ← loader 使用的 WebSocket 依赖
 └─ spike/ntqq-loader/        ← 本机 loader 安装/补丁脚本
    ├─ install-native.ps1
@@ -106,8 +106,7 @@ AstrBot 和 QQ 不随包分发，需要你自行安装。
 
 ```text
 config/upstream.json      # 地址、QQ 号、管理 token
-config/send-guard.json    # SendGuard 配置（首次保存后出现）
-data/polaris.db           # 配额、熔断、审计
+data/polaris.db           # 事件去重与 outbox
 ```
 
 管理 token 也保存在 `config/upstream.json` 的 `admin.token`。如果窗口关掉了，
@@ -117,51 +116,35 @@ data/polaris.db           # 配额、熔断、审计
 
 打开 `http://127.0.0.1:18081`，输入管理 token。面板包含：
 
-- **总览**：loader/OneBot/运行状态/熔断状态、今日配额、白名单摘要；
+- **总览**：loader/OneBot/运行状态、账号与队列；
 - **协议端配置**：面板端口、上游 WS、AstrBot 反向 WS 地址/token；保存后平滑重启 Core；
-- **SendGuard**：群/私聊白名单、@ 触发、静默时段、配额、频控、急停/恢复/reset；
-- **审计**：发送决策、原因、目标/账号哈希、retcode；不返回正文或明文 UID；
-- **指标**：allowed/denied 趋势；
+- **指标**：健康状态、就绪、OneBot 连接和队列长度；
 - **系统**：修改管理密码、终止 Core 进程；
 - **主题**：右上角切换深色/浅色，选择保存在本机。
 
-面板不提供“发消息”输入框，发送仍然只走 AstrBot → Core → SendGuard → loader。
+面板不提供“发消息”输入框，发送仍然只走 AstrBot → Core → loader。
 
-## 6. SendGuard 默认值与常用配置
+## 6. 消息收发与回复设置
 
-首次生成的配置：
+Lodestar 不做发送侧过滤：AstrBot 决定回复谁、回复什么，Core 只负责把动作转发给 loader。
+是否回复私聊、是否响应群消息，都在 AstrBot 侧配置。
 
-| 配置 | 默认 | 说明 |
-| --- | --- | --- |
-| `groupWhitelist` | 空 | **空 = 拒绝所有群**；测试群必须显式加入 |
-| `privateEnabled` | 开启 | 私聊总开关 |
-| `privateWhitelist` | 空 | **空 = 允许所有私聊**；填写后只允许列表中的 QQ |
-| `atOnly` | 关闭 | 开启后只允许带 `at` 的群发送；当前实现按出站消息判断 |
-| `quietHours` | 关闭 | 可在面板开启静默时段 |
-| 日配额 / 群配额 | 200 / 80 | 按账号/群/天 |
-| 同群最小间隔 | 2000 ms | 防止高频 |
-| 重复窗口 | 60000 ms | 同目标同内容抑制 |
-| 失败阈值 | 3 | 连续失败打开熔断，只允许人工 reset |
+### 6.1 私聊
 
-### 6.1 让私聊工作
-
-- 打开“允许私聊发送”；
-- 白名单留空 = 所有私聊都允许；填入 QQ 号 = 只允许这些 QQ；
-- 关闭总开关 = 拒绝所有私聊。
+- 私聊消息会直接送到 AstrBot；是否回复由 AstrBot 的规则/人格决定；
+- Lodestar 不按 QQ 号过滤私聊。
 
 ### 6.2 让群回复工作
 
-1. 在 SendGuard 的“群白名单”里加入测试群号（逗号分隔）；
-2. 在群里 **@ 测试号**，或使用 AstrBot 的唤醒前缀（默认 `/`）；
-3. 如果 `atOnly` 开启，出站消息必须包含 `at` 段；AstrBot 的普通群回复通常不含，
-   因此建议保持关闭，或把 `atOnly` 作为额外约束使用；
-4. 如果群里没有 @ 也没有 `/`，AstrBot 不会生成回复，SendGuard 也不会收到发送动作。
+1. 在群里 **@ 测试号**，或使用 AstrBot 的唤醒前缀（默认 `/`）；
+2. 如果群里没有 @ 也没有 `/`，AstrBot 不会生成回复；
+3. 群回复内容和频率由 AstrBot 决定，Lodestar 不做白名单或配额限制。
 
-### 6.3 急停
+### 6.3 停止服务
 
-- 面板 SendGuard → 危险操作 → 输入 `STOP`：立即写 `data/STOP`，下一次发送返回 1508；
-- 输入 `RESUME` 恢复；`RESET` 清除熔断；
-- 也可以直接退出 Core；下次启动前检查 `data/STOP` 是否存在。
+- 关闭 Core 窗口或 Ctrl-C：只停止 Core，QQ、loader 和 AstrBot 不受影响；
+- 面板系统页也可以“终止 Core 进程”；
+- 需要彻底停用时，再退出 QQ 和 AstrBot。
 
 ## 7. 常见问题
 
@@ -184,7 +167,7 @@ data/polaris.db           # 配额、熔断、审计
 
 ### 7.3 AstrBot 报 `ApiNotAvailable`
 
-这是 AstrBot 侧反向 WS 的 API 客户端不可用，不是 SendGuard 白名单。常见于
+这是 AstrBot 侧反向 WS 的 API 客户端不可用，不是 Lodestar 的配置问题。常见于
 Core/AstrBot 重启顺序不对或旧连接未清理。按这个顺序恢复：
 
 1. 面板系统 → 终止 Core（或关闭 Core 窗口）；
@@ -196,10 +179,9 @@ Core/AstrBot 重启顺序不对或旧连接未清理。按这个顺序恢复：
 
 ### 7.4 群消息没有回复
 
-- 群是否在 `groupWhitelist`；
 - 是否 @ 了测试号或使用了 `/` 唤醒前缀；
-- `atOnly` 是否开启（出站消息无 at 会被拦）；
-- 面板审计里看最新一条群发送的 `reason`（`whitelist` / `not_at` / `quota`）。
+- AstrBot 的人格/模型是否配置正确；
+- 查看 AstrBot 日志里是否收到该群消息。
 
 ### 7.5 面板打不开 / 端口被占用
 
@@ -285,7 +267,7 @@ D:\qq\polaris-backup\<版本>-<时间>\
 | loader OneBot WS | `ws://127.0.0.1:3001/` |
 | AstrBot 反向 WS | `ws://127.0.0.1:6199/ws` |
 | 管理 token | `config/upstream.json` → `admin.token` |
-| 运行数据 | `data/polaris.db`、`data/STOP` |
+| 运行数据 | `data/polaris.db` |
 | loader 日志 | `D:\qq-loader\self-loader-*.jsonl` |
 | 安装日志 | `D:\qq-loader\install.log` |
 
@@ -294,4 +276,4 @@ D:\qq\polaris-backup\<版本>-<时间>\
 - 当前版本：`0.1.0-m1.2`
 - 目标 QQ：`9.9.37-54395`（补丁只对这个版本有效）
 - 问题反馈请附：`install.log`、最新的 `self-loader-*.jsonl`、AstrBot 报错时间和
-  面板审计中的 reason；不要附带账号密码、token 或消息正文。
+  AstrBot 日志；不要附带账号密码、token 或消息正文。

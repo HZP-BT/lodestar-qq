@@ -8,14 +8,13 @@ import { WebSocketServer } from 'ws';
 
 import { AdminServer } from '../src/admin/admin-server.js';
 import type { AdminRuntimeView } from '../src/admin/admin-server.js';
-import { SendGuard } from '../src/send-guard.js';
-import { openSqliteDatabase } from '../src/storage/database.js';
-import { SendGuardStore } from '../src/storage/send-guard-store.js';
 import type { CoreRuntimeStatus } from '../src/runtime/core-runtime.js';
+import { AdminAuditStore } from '../src/storage/admin-audit-store.js';
+import { openSqliteDatabase } from '../src/storage/database.js';
+import { SCHEMA_SQL } from '../src/storage/schema.js';
 
 const TOKEN = 'test-admin-token';
 const SELF_ID = 123456;
-const GROUP_ID = 100;
 const NOW = 1_000_000;
 
 const servers: AdminServer[] = [];
@@ -28,24 +27,8 @@ afterEach(async () => {
 function createRuntime() {
   const dir = mkdtempSync(join(tmpdir(), 'polaris-admin-'));
   const db = openSqliteDatabase(join(dir, 'admin.db'));
-  const store = new SendGuardStore(db);
-  const guard = new SendGuard(
-    {
-      groupWhitelist: [],
-      privateEnabled: false,
-      atOnly: true,
-      dailyQuota: 20,
-      perGroupDailyQuota: 20,
-      minIntervalMs: 0,
-      randomDelayMs: 0,
-      quietHours: null,
-      duplicateWindowMs: 60_000,
-      sendFailureThreshold: 3,
-      auditRetentionDays: 14,
-      stopFile: join(dir, 'STOP'),
-    },
-    { now: () => NOW, random: () => 0, storage: store },
-  );
+  db.exec(SCHEMA_SQL);
+  const store = new AdminAuditStore(db);
 
   const runtime: AdminRuntimeView = {
     status: (): CoreRuntimeStatus => ({
@@ -58,7 +41,6 @@ function createRuntime() {
         state: 'ONLINE',
         loginState: 'LOGGED_IN',
       },
-      sendGuard: guard.snapshot(),
     }),
     adapter: {
       health: () =>
@@ -69,15 +51,13 @@ function createRuntime() {
           qqBuild: '9.9.33-52230',
         }),
     },
-    guard,
-    sendGuardStoreInstance: store,
+    adminAuditStore: store,
   };
 
   return {
     dir,
     db,
     store,
-    guard,
     runtime,
     cleanup: () => {
       db.close();
@@ -95,7 +75,6 @@ async function startServer(
     runtime,
     token: TOKEN,
     port: 0,
-    configPath: join(dir, 'send-guard.json'),
     protocolConfigPath: join(dir, 'upstream.json'),
     webRoot: join(dir, 'web'),
     now: () => NOW,
@@ -130,7 +109,6 @@ describe('AdminServer', () => {
             token: TOKEN,
             port: 0,
             host: '0.0.0.0',
-            configPath: join(runtime.dir, 'send-guard.json'),
             webRoot: join(runtime.dir, 'web'),
           }),
       ).toThrow(/loopback/);
@@ -154,10 +132,12 @@ describe('AdminServer', () => {
         account: { idHash: string };
         loader: { dataPlane: string };
         onebot: { clientState: string };
+        health: { state: string };
       };
       expect(body.demo).toBe(false);
       expect(body.loader.dataPlane).toBe('healthy');
       expect(body.onebot.clientState).toBe('open');
+      expect(body.health.state).toBe('ONLINE');
       expect(body.account.idHash).toMatch(/^[0-9a-f]{16}$/);
       expect(JSON.stringify(body)).not.toContain(String(SELF_ID));
     } finally {
@@ -176,141 +156,24 @@ describe('AdminServer', () => {
     }
   });
 
-  it('updates config, writes the file, and audits writes without content', async () => {
+  it('serves runtime metrics and admin audit', async () => {
     const runtime = createRuntime();
     try {
       const server = await startServer(runtime.runtime, runtime.dir);
-      const response = await request(server, '/api/sendguard/config', {
-        method: 'PUT',
-        body: JSON.stringify({
-          groupWhitelist: [GROUP_ID],
-          dailyQuota: 5,
-          perGroupDailyQuota: 5,
-          minIntervalMs: 0,
-          quietHours: null,
-        }),
-      });
-      expect(response.status).toBe(200);
-      const body = (await response.json()) as { config: { dailyQuota: number } };
-      expect(body.config.dailyQuota).toBe(5);
-      expect(runtime.guard.configSnapshot().groupWhitelist).toEqual([GROUP_ID]);
-
-      const persisted = runtime.store.recentAdminAudit(1)[0];
-      expect(persisted?.action).toBe('sendguard.config');
-      expect(JSON.stringify(persisted)).not.toContain(TOKEN);
-    } finally {
-      runtime.cleanup();
-    }
-  });
-
-  it('supports stop/resume/reset with server-side confirmation', async () => {
-    const runtime = createRuntime();
-    try {
-      const server = await startServer(runtime.runtime, runtime.dir);
-
-      expect(
-        (
-          await request(server, '/api/sendguard/stop', {
-            method: 'POST',
-            body: JSON.stringify({ confirm: 'nope' }),
-          })
-        ).status,
-      ).toBe(400);
-
-      const stopped = await request(server, '/api/sendguard/stop', {
-        method: 'POST',
-        body: JSON.stringify({ confirm: 'STOP' }),
-      });
-      expect(stopped.status).toBe(200);
-      expect(((await stopped.json()) as { stopDisabled: boolean }).stopDisabled).toBe(true);
-
-      const resumed = await request(server, '/api/sendguard/resume', {
-        method: 'POST',
-        body: JSON.stringify({ confirm: 'RESUME' }),
-      });
-      expect(resumed.status).toBe(200);
-      expect(((await resumed.json()) as { stopDisabled: boolean }).stopDisabled).toBe(false);
-
-      runtime.guard.reportSecuritySignal('test');
-      const reset = await request(server, '/api/sendguard/reset', {
-        method: 'POST',
-        body: JSON.stringify({ confirm: 'RESET' }),
-      });
-      expect(reset.status).toBe(200);
-      expect(((await reset.json()) as { circuit: { state: string } }).circuit.state).toBe('CLOSED');
-    } finally {
-      runtime.cleanup();
-    }
-  });
-
-  it('returns paginated audit metadata with hashed targets', async () => {
-    const runtime = createRuntime();
-    try {
-      runtime.guard.updateConfig({
-        groupWhitelist: [GROUP_ID],
-        minIntervalMs: 0,
-        quietHours: null,
-      });
-      runtime.guard.check(
-        'send_group_msg',
-        {
-          group_id: GROUP_ID,
-          message: [
-            { type: 'at', data: { qq: String(SELF_ID) } },
-            { type: 'text', data: { text: 'secret text' } },
-          ],
-        },
-        SELF_ID,
-      );
-
-      const server = await startServer(runtime.runtime, runtime.dir);
-      const response = await request(server, '/api/audit?limit=10&offset=0');
-      expect(response.status).toBe(200);
-      const page = (await response.json()) as {
-        total: number;
-        items: Array<{
-          action: string;
-          decision: string;
-          targetHash: string;
-          messageHash: string | null;
-          targetId?: string;
-          accountId?: number;
-        }>;
-      };
-      expect(page.total).toBe(1);
-      expect(page.items[0]).toMatchObject({
-        action: 'send_group_msg',
-        decision: 'allowed',
-      });
-      expect(page.items[0]?.targetHash).toMatch(/^[0-9a-f]{16}$/);
-      expect(page.items[0]?.messageHash).toMatch(/^[0-9a-f]{32}$/);
-      expect(page.items[0]?.targetId).toBeUndefined();
-      expect(page.items[0]?.accountId).toBeUndefined();
-      expect(JSON.stringify(page)).not.toContain('secret text');
-    } finally {
-      runtime.cleanup();
-    }
-  });
-
-  it('serves metrics and admin audit', async () => {
-    const runtime = createRuntime();
-    try {
-      const server = await startServer(runtime.runtime, runtime.dir);
-      await request(server, '/api/sendguard/config', {
-        method: 'PUT',
-        body: JSON.stringify({ dailyQuota: 7 }),
-      });
+      runtime.runtime.restart = () => Promise.resolve({ restartedAt: new Date(NOW).toISOString() });
+      await request(server, '/api/restart', { method: 'POST' });
 
       const metrics = await request(server, '/api/metrics');
       expect(metrics.status).toBe(200);
       const text = await metrics.text();
-      expect(text).toContain('polaris_send_guard_circuit');
-      expect(text).toContain('polaris_send_disabled');
+      expect(text).toContain('polaris_health_state{state="ONLINE"} 1');
+      expect(text).toContain('polaris_ready 1');
+      expect(text).not.toContain('polaris_send_guard');
 
       const adminAudit = await request(server, '/api/admin-audit');
       expect(adminAudit.status).toBe(200);
       const body = (await adminAudit.json()) as { items: Array<{ action: string }> };
-      expect(body.items[0]?.action).toBe('sendguard.config');
+      expect(body.items[0]?.action).toBe('core.restart');
     } finally {
       runtime.cleanup();
     }

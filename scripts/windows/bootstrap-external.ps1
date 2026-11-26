@@ -483,7 +483,6 @@ $upstream = Ensure-Object $config "upstream"
 $astrbot = Ensure-Object $config "astrbot"
 $admin = Ensure-Object $config "admin"
 $health = Ensure-Object $config "health"
-$sendGuard = Ensure-Object $config "sendGuard"
 
 # 2. AstrBot adapter settings.
 $astrbotPort = 6199
@@ -656,7 +655,6 @@ Set-Field $astrbot "token" $astrbotToken
 Set-Field $admin "enabled" $true
 Set-Field $admin "host" "127.0.0.1"
 Set-Field $admin "port" 18081
-Set-Field $admin "configPath" "config/send-guard.json"
 Set-Field $admin "webRoot" $(if ($portable) { "web" } else { "packages/web/dist" })
 if (-not $admin.token) { Set-Field $admin "token" (New-AdminToken) }
 Set-Field $health "host" "127.0.0.1"

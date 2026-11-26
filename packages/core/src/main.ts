@@ -1,7 +1,6 @@
 import { parseReverseWsConfig } from './config.js';
 import { createLogger } from './logger.js';
 import { ReverseWsClient } from './onebot/reverse-ws-client.js';
-import { SendGuard } from './send-guard.js';
 import { detectNodeSqlite } from './storage/detect-node-sqlite.js';
 import { PROTOCOL_VERSION, VERSION } from './version.js';
 
@@ -38,51 +37,6 @@ if (config.selfId === 0) {
   );
 }
 
-const groupWhitelist = idListEnv(env('GROUP_WHITELIST'));
-const privateWhitelist = idListEnv(env('PRIVATE_WHITELIST'));
-const privateEnabled = env('PRIVATE_ENABLED') === '1';
-const dailyQuota = numberEnv('DAILY_QUOTA', 200);
-const perGroupDailyQuota = numberEnv('PER_GROUP_DAILY_QUOTA', 80);
-const minIntervalMs = numberEnv('MIN_INTERVAL_MS', 2_000);
-const randomDelayMs = numberEnv('RANDOM_DELAY_MS', 1_500);
-const duplicateWindowMs = numberEnv('DUPLICATE_WINDOW_MS', 60_000);
-const sendFailureThreshold = numberEnv('SEND_FAILURE_THRESHOLD', 3);
-const auditRetentionDays = numberEnv('AUDIT_RETENTION_DAYS', 30);
-const stopFile = env('STOP_FILE') ?? 'data/STOP';
-
-const sendGuard = new SendGuard({
-  groupWhitelist,
-  privateWhitelist,
-  privateEnabled,
-  dailyQuota,
-  perGroupDailyQuota,
-  minIntervalMs,
-  randomDelayMs,
-  duplicateWindowMs,
-  sendFailureThreshold,
-  auditRetentionDays,
-  atOnly: env('AT_ONLY') !== '0',
-  stopFile,
-});
-sendGuard.startStopWatchdog();
-logger.info(
-  {
-    groupWhitelist,
-    privateWhitelist,
-    privateEnabled,
-    dailyQuota,
-    perGroupDailyQuota,
-    minIntervalMs,
-    randomDelayMs,
-    duplicateWindowMs,
-    sendFailureThreshold,
-    auditRetentionDays,
-    atOnly: env('AT_ONLY') !== '0',
-    stopFile,
-  },
-  'SendGuard enabled',
-);
-
 const client = new ReverseWsClient({
   url: config.url,
   selfId: config.selfId,
@@ -94,7 +48,6 @@ const client = new ReverseWsClient({
   heartbeat: config.heartbeat,
   maxConcurrentActions: config.maxConcurrentActions,
   actionTimeoutMs: config.actionTimeoutMs,
-  sendGuard,
   logger,
 });
 
@@ -142,24 +95,9 @@ client.start();
 
 function shutdown(signal: string): void {
   logger.info({ signal }, 'shutting down');
-  sendGuard.stop();
   void client.stop().finally(() => {
     process.exit(0);
   });
-}
-
-function numberEnv(name: string, fallback: number): number {
-  const value = Number(env(name));
-  return Number.isFinite(value) && value >= 0 ? value : fallback;
-}
-
-function idListEnv(value: string | undefined): number[] {
-  return (value ?? '')
-    .split(',')
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0)
-    .map(Number)
-    .filter((item) => Number.isSafeInteger(item) && item > 0);
 }
 
 process.once('SIGINT', () => {

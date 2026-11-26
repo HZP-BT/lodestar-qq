@@ -1,4 +1,4 @@
-type Route = 'overview' | 'protocol' | 'sendguard' | 'audit' | 'metrics' | 'system';
+type Route = 'overview' | 'protocol' | 'metrics' | 'system';
 
 interface StatusPayload {
   ok: boolean;
@@ -13,71 +13,9 @@ interface StatusPayload {
   };
   onebot: { clientState: string };
   health: { state: string; loginState: string };
-  sendGuard: {
-    circuit: 'CLOSED' | 'OPEN';
-    circuitReason: string | null;
-    stopDisabled: boolean;
-    allowed: number;
-    blocked: Record<string, number>;
-    auditTotal: number;
-  };
   pendingEvents: number;
   replayableEvents: number;
   serverTime: string;
-}
-
-interface GuardConfig {
-  groupWhitelist: number[];
-  privateEnabled: boolean;
-  privateWhitelist: number[];
-  atOnly: boolean;
-  dailyQuota: number;
-  perGroupDailyQuota: number | null;
-  minIntervalMs: number;
-  randomDelayMs: number;
-  quietHours: { startHour: number; endHour: number } | null;
-  duplicateWindowMs: number;
-  sendFailureThreshold: number;
-  auditRetentionDays: number;
-  stopFile: string;
-}
-
-interface SendGuardPayload {
-  ok: boolean;
-  circuit: { state: 'CLOSED' | 'OPEN'; reason: string | null };
-  stopDisabled: boolean;
-  quota: {
-    date: string;
-    account: { used: number; limit: number };
-    groups: Array<{ groupId: number; used: number; limit: number | null }>;
-  };
-  config: GuardConfig;
-}
-
-interface AuditItem {
-  id: number;
-  action: string;
-  targetType: string;
-  targetHash: string;
-  decision: 'allowed' | 'blocked';
-  reason: string;
-  messageHash: string | null;
-  messageLength: number | null;
-  retcode: number | null;
-  createdAt: number;
-}
-
-interface AuditPage {
-  items: AuditItem[];
-  total: number;
-  limit: number;
-  offset: number;
-}
-
-interface Sample {
-  time: number;
-  allowed: number;
-  denied: number;
 }
 
 interface ProtocolPayload {
@@ -155,29 +93,15 @@ try {
 }
 
 let coreStatus: StatusPayload | null = null;
-let guard: SendGuardPayload | null = null;
 let protocol: ProtocolPayload | null = null;
 let route: Route = routeFromHash();
-let auditPage: AuditPage | null = null;
-let auditOffset = 0;
-let auditDecision = '';
-let auditAction = '';
-const metricsHistory: Sample[] = [];
 let toastTimer = 0;
 let protocolRestartRequired = false;
 let metricsRevealPending = false;
-let auditAutoRefresh = true;
-let auditRequestId = 0;
 
 function routeFromHash(): Route {
   const value = location.hash.replace(/^#\/?/, '');
-  return value === 'protocol' ||
-    value === 'sendguard' ||
-    value === 'audit' ||
-    value === 'metrics' ||
-    value === 'system'
-    ? value
-    : 'overview';
+  return value === 'protocol' || value === 'metrics' || value === 'system' ? value : 'overview';
 }
 
 function esc(value: unknown): string {
@@ -197,10 +121,6 @@ function esc(value: unknown): string {
     "'": '&#39;',
   };
   return text.replace(/[&<>"']/g, (char) => entities[char] ?? char);
-}
-
-function fmtTime(seconds: number): string {
-  return new Date(seconds * 1000).toLocaleString();
 }
 
 function sleep(ms: number): Promise<void> {
@@ -227,9 +147,6 @@ function serviceState(): { label: string; tone: 'ok' | 'warn' | 'bad' } {
     return { label: '后端核心服务未连接', tone: 'bad' };
   }
   const s = coreStatus;
-  if (s.sendGuard.circuit === 'OPEN') {
-    return { label: '发送熔断已开启', tone: 'bad' };
-  }
   if (isDemoStatus(s)) {
     return { label: '演示模式（Mock）', tone: 'warn' };
   }
@@ -251,9 +168,6 @@ function serviceState(): { label: string; tone: 'ok' | 'warn' | 'bad' } {
 function serviceHint(): string {
   if (!coreStatus) {
     return '无法读取本地 Core 状态。请确认核心进程仍在运行，然后重试。';
-  }
-  if (coreStatus.sendGuard.circuit === 'OPEN') {
-    return '发送熔断已开启。请先检查审计记录和上游状态，再人工 reset。';
   }
   if (isDemoStatus(coreStatus)) {
     return '当前使用内置 Mock 后端，未连接真实 QQ 和 AstrBot；以下状态均为模拟数据。';
@@ -358,13 +272,11 @@ async function apiText(path: string): Promise<string> {
 
 async function loadCore(renderView = true, animate = false): Promise<void> {
   if (!token) return;
-  const [nextStatus, nextGuard, nextProtocol] = await Promise.all([
+  const [nextStatus, nextProtocol] = await Promise.all([
     api<StatusPayload>('/api/status'),
-    api<SendGuardPayload>('/api/sendguard'),
     api<ProtocolPayload>('/api/protocol'),
   ]);
   coreStatus = nextStatus;
-  guard = nextGuard;
   protocol = nextProtocol;
   updateConnectionState();
   if (renderView) {
@@ -413,10 +325,6 @@ function render(animate = false): void {
 
   if (route === 'protocol') {
     renderProtocol();
-  } else if (route === 'sendguard') {
-    renderSendGuard();
-  } else if (route === 'audit') {
-    void renderAudit().catch(renderError);
   } else if (route === 'metrics') {
     void renderMetrics().catch(renderError);
   } else if (route === 'system') {
@@ -427,19 +335,15 @@ function render(animate = false): void {
 }
 
 function renderOverview(): void {
-  if (!coreStatus || !guard) {
+  if (!coreStatus) {
     view.innerHTML = `<div class="card"><div class="empty">加载中…</div></div>`;
     return;
   }
 
   const s = coreStatus;
-  const g = guard;
   const demoMode = isDemoStatus(s);
-  const quota = g.quota.account;
-  const percent = quota.limit > 0 ? Math.min(100, (quota.used / quota.limit) * 100) : 0;
   const loaderOk = s.loader.dataPlane === 'healthy' || s.loader.process === 'ready';
   const onlineOk = s.health.state === 'ONLINE';
-  const circuitOk = s.sendGuard.circuit === 'CLOSED';
   const service = serviceState();
   const waitingFirstMessage =
     s.health.state === 'UNKNOWN' &&
@@ -451,7 +355,7 @@ function renderOverview(): void {
     <div class="page-head">
       <div>
         <h1>总览</h1>
-        <p>本地只读状态 + SendGuard 控制；面板不提供发送入口。</p>
+        <p>本地只读状态；面板不提供发送入口。</p>
       </div>
       <button class="btn" id="refresh">刷新</button>
     </div>
@@ -481,45 +385,25 @@ function renderOverview(): void {
             : ''
         }
       </section>
-      <section class="card span-3">
+      <section class="card span-4">
         <h2>Loader / 上游${demoMode ? '（Mock）' : ''}</h2>
         <div class="metric"><span class="dot ${loaderOk ? 'ok' : 'bad'}"></span>${esc(s.loader.dataPlane)}</div>
         <div class="muted small">process ${esc(s.loader.process)} · login ${esc(s.loader.loginState)}</div>
         <div class="muted small">QQ ${esc(s.loader.qqBuild ?? 'unknown')}${demoMode ? '（模拟）' : ''}</div>
       </section>
-      <section class="card span-3">
+      <section class="card span-4">
         <h2>OneBot 连接</h2>
         <div class="metric"><span class="dot ${s.onebot.clientState === 'open' ? 'ok' : 'warn'}"></span>${esc(s.onebot.clientState)}</div>
         <div class="muted small">${demoMode ? '内置 mock AstrBot' : 'AstrBot reverse WS'}</div>
       </section>
-      <section class="card span-3">
+      <section class="card span-4">
         <h2>运行状态</h2>
         <div class="metric"><span class="dot ${onlineOk ? 'ok' : 'bad'}"></span>${esc(s.health.state)}</div>
         <div class="muted small">login ${esc(s.health.loginState)}</div>
       </section>
-      <section class="card span-3">
-        <h2>熔断器</h2>
-        <div class="metric"><span class="dot ${circuitOk ? 'ok' : 'bad'}"></span>${esc(s.sendGuard.circuit)}</div>
-        <div class="muted small">${esc(s.sendGuard.circuitReason ?? 'no open reason')}</div>
-      </section>
-      <section class="card span-6">
-        <h2>今日配额</h2>
-        <div class="spread"><strong>${quota.used} / ${quota.limit}</strong><span class="muted small">${esc(g.quota.date)}</span></div>
-        <div class="progress" style="margin-top:10px"><span style="width:${percent}%"></span></div>
-        <div class="muted small" style="margin-top:8px">账号 ${esc(s.account.idHash)} · pending ${s.pendingEvents} · replayable ${s.replayableEvents}</div>
-      </section>
-      <section class="card span-6">
-        <h2>白名单摘要</h2>
-        <div class="row">${g.config.groupWhitelist.length > 0 ? g.config.groupWhitelist.map((id) => `<span class="tag">群 ${esc(id)}</span>`).join('') : '<span class="tag bad">空：拒绝所有群</span>'}</div>
-        <div class="muted small" style="margin-top:10px">私聊 ${g.config.privateEnabled ? '开启' : '关闭'} · @ 触发 ${g.config.atOnly ? '开启' : '关闭'} · 最小间隔 ${g.config.minIntervalMs}ms</div>
-      </section>
       <section class="card span-12">
-        <div class="row">
-          ${s.sendGuard.stopDisabled ? '<span class="tag bad">STOP 已生效</span>' : '<span class="tag ok">发送未停止</span>'}
-          <span class="tag ${s.sendGuard.circuit === 'OPEN' ? 'bad' : 'ok'}">CIRCUIT ${esc(s.sendGuard.circuit)}</span>
-          <a class="btn btn-ghost" href="#/sendguard">前往 SendGuard 安全设置</a>
-        </div>
-        <p class="muted small" style="margin:10px 0 0">急停/恢复/reset 已收纳到 SendGuard 页，避免总览误触。</p>
+        <h2>账号与队列</h2>
+        <div class="muted small">账号 ${esc(s.account.idHash)} · pending ${s.pendingEvents} · replayable ${s.replayableEvents} · 服务器时间 ${esc(new Date(s.serverTime).toLocaleString())}</div>
       </section>
     </div>`;
 
@@ -803,143 +687,6 @@ async function testReverseConnection(): Promise<void> {
   }
 }
 
-function renderSendGuard(): void {
-  if (!guard) {
-    view.innerHTML = `<div class="card"><div class="empty">加载中…</div></div>`;
-    return;
-  }
-  const c = guard.config;
-  const quiet = c.quietHours ?? { startHour: 0, endHour: 8 };
-
-  view.innerHTML = `
-    <div class="page-head">
-      <div><h1>SendGuard</h1><p>唯一发送出口的策略；保存后热加载，并写入 config/send-guard.json。</p></div>
-      <div class="row">
-        ${guard.stopDisabled ? '<span class="tag bad">STOP 已生效</span>' : '<span class="tag ok">发送未停止</span>'}
-        <span class="tag ${guard.circuit.state === 'CLOSED' ? 'ok' : 'bad'}">CIRCUIT ${esc(guard.circuit.state)}</span>
-      </div>
-    </div>
-    <form id="guard-form" class="card">
-      <div class="form-grid">
-        <label class="field"><span>群白名单（逗号分隔，空=全部拒绝）</span><input id="groupWhitelist" value="${esc(c.groupWhitelist.join(','))}" /></label>
-        <label class="field"><span>私聊白名单（逗号分隔，空=全部允许）</span><input id="privateWhitelist" value="${esc(c.privateWhitelist.join(','))}" /></label>
-        <label class="field checkbox"><input id="privateEnabled" type="checkbox" ${c.privateEnabled ? 'checked' : ''}/> 允许私聊发送</label>
-        <label class="field checkbox"><input id="atOnly" type="checkbox" ${c.atOnly ? 'checked' : ''}/> 群消息必须 @ 机器人</label>
-        <p class="muted small" style="grid-column:1/-1;margin:0">私聊开关是总开关：关闭=拒绝所有私聊；开启且白名单为空=允许所有私聊；填写白名单=只允许列表中的 QQ。群白名单为空则拒绝所有群。</p>
-        <label class="field"><span>账号日配额</span><input id="dailyQuota" type="number" min="0" value="${c.dailyQuota}" /></label>
-        <label class="field"><span>群日配额（空=不限）</span><input id="perGroupDailyQuota" type="number" min="0" value="${c.perGroupDailyQuota ?? ''}" /></label>
-        <label class="field"><span>同群最小间隔 ms</span><input id="minIntervalMs" type="number" min="0" value="${c.minIntervalMs}" /></label>
-        <label class="field"><span>随机延迟 ms</span><input id="randomDelayMs" type="number" min="0" value="${c.randomDelayMs}" /></label>
-        <label class="field"><span>重复抑制窗口 ms</span><input id="duplicateWindowMs" type="number" min="0" value="${c.duplicateWindowMs}" /></label>
-        <label class="field"><span>连续失败熔断阈值</span><input id="sendFailureThreshold" type="number" min="1" value="${c.sendFailureThreshold}" /></label>
-        <label class="field"><span>审计保留天数</span><input id="auditRetentionDays" type="number" min="1" value="${c.auditRetentionDays}" /></label>
-        <label class="field checkbox"><input id="quietEnabled" type="checkbox" ${c.quietHours ? 'checked' : ''}/> 启用静默时段</label>
-        <label class="field"><span>静默开始小时</span><input id="quietStart" type="number" min="0" max="23" value="${quiet.startHour}" /></label>
-        <label class="field"><span>静默结束小时</span><input id="quietEnd" type="number" min="0" max="23" value="${quiet.endHour}" /></label>
-      </div>
-      <div class="form-actions">
-        <button class="btn btn-primary" type="submit">保存并热加载</button>
-      </div>
-      <p class="muted small" style="margin-top:12px">发送内容仍只走 OneBot/AstrBot 链路；此页面不提供发送框，避免绕过 SendGuard。</p>
-    </form>
-    <section class="card danger-zone">
-      <h2>危险操作</h2>
-      <p class="muted small">急停会写 data/STOP，下一次发送立即返回 1508；恢复会删除 STOP；reset 只在确认上游恢复后使用。三项都需要输入确认词。</p>
-      <div class="row">
-        ${guard.stopDisabled ? '<button class="btn" type="button" id="guard-resume">恢复发送</button>' : '<button class="btn btn-danger" type="button" id="guard-stop">急停发送</button>'}
-        <button class="btn" type="button" id="guard-reset">人工 reset 熔断</button>
-      </div>
-    </section>`;
-
-  const form = document.getElementById('guard-form') as HTMLFormElement;
-  form.addEventListener('submit', (event) => {
-    event.preventDefault();
-    void saveConfig().catch(renderError);
-  });
-
-  document.getElementById('guard-reset')?.addEventListener('click', () => {
-    confirmPhrase('人工 reset 熔断', '确认上游已恢复后再执行。', 'RESET', 'Reset', async () => {
-      await api('/api/sendguard/reset', {
-        method: 'POST',
-        body: JSON.stringify({ confirm: 'RESET' }),
-      });
-      await loadCore();
-      toast('熔断已 reset');
-    });
-  });
-  document.getElementById('guard-stop')?.addEventListener('click', () => {
-    confirmPhrase(
-      '急停发送',
-      '写入 data/STOP；下一次发送立即被拒绝。',
-      'STOP',
-      '急停',
-      async () => {
-        await api('/api/sendguard/stop', {
-          method: 'POST',
-          body: JSON.stringify({ confirm: 'STOP' }),
-        });
-        await loadCore();
-        toast('已急停');
-      },
-    );
-  });
-  document.getElementById('guard-resume')?.addEventListener('click', () => {
-    confirmPhrase('恢复发送', '删除 data/STOP。', 'RESUME', '恢复', async () => {
-      await api('/api/sendguard/resume', {
-        method: 'POST',
-        body: JSON.stringify({ confirm: 'RESUME' }),
-      });
-      await loadCore();
-      toast('已恢复发送');
-    });
-  });
-}
-
-async function saveConfig(): Promise<void> {
-  const read = (id: string): string =>
-    (document.getElementById(id) as HTMLInputElement | null)?.value.trim() ?? '';
-  const number = (id: string, fallback: number): number => {
-    const value = Number(read(id));
-    return Number.isFinite(value) ? value : fallback;
-  };
-  const ids = (id: string): number[] =>
-    read(id)
-      .split(',')
-      .map((item) => item.trim())
-      .filter(Boolean)
-      .map(Number)
-      .filter((item) => Number.isSafeInteger(item) && item > 0);
-
-  const perGroup = read('perGroupDailyQuota');
-  const quietEnabled = (document.getElementById('quietEnabled') as HTMLInputElement).checked;
-  const payload = {
-    groupWhitelist: ids('groupWhitelist'),
-    privateWhitelist: ids('privateWhitelist'),
-    privateEnabled: (document.getElementById('privateEnabled') as HTMLInputElement).checked,
-    atOnly: (document.getElementById('atOnly') as HTMLInputElement).checked,
-    dailyQuota: number('dailyQuota', 20),
-    perGroupDailyQuota: perGroup === '' ? null : number('perGroupDailyQuota', 0),
-    minIntervalMs: number('minIntervalMs', 2000),
-    randomDelayMs: number('randomDelayMs', 1000),
-    duplicateWindowMs: number('duplicateWindowMs', 60000),
-    sendFailureThreshold: number('sendFailureThreshold', 3),
-    auditRetentionDays: number('auditRetentionDays', 30),
-    quietHours: quietEnabled
-      ? {
-          startHour: number('quietStart', 0),
-          endHour: number('quietEnd', 8),
-        }
-      : null,
-  };
-
-  await api('/api/sendguard/config', {
-    method: 'PUT',
-    body: JSON.stringify(payload),
-  });
-  await loadCore();
-  toast('SendGuard 配置已保存并热加载');
-}
-
 function renderSystem(): void {
   view.innerHTML = `
     <div class="page-head"><div><h1>系统</h1><p>管理密码与 Core 生命周期；不提供发送入口。</p></div></div>
@@ -1038,123 +785,14 @@ function showTerminated(): void {
     </main>`;
 }
 
-async function renderAudit(): Promise<void> {
-  view.innerHTML = `
-    <div class="page-head"><div><h1>发送审计</h1><p>只显示元数据；目标与账号已哈希，不返回正文或明文 UID。</p></div></div>
-    <div class="card">
-      <div class="row" style="margin-bottom:14px">
-        <label class="field"><span>决策</span><select id="audit-decision">
-          <option value="">全部</option><option value="allowed">allowed</option><option value="blocked">blocked</option>
-        </select></label>
-        <label class="field"><span>动作</span><input id="audit-action" placeholder="send_group_msg" /></label>
-        <button class="btn" id="audit-apply">筛选</button>
-        <button class="btn btn-ghost" id="audit-reset">清空</button>
-        <label class="field checkbox audit-auto"><input id="audit-auto" type="checkbox" ${auditAutoRefresh ? 'checked' : ''}/> 自动刷新（2s）</label>
-      </div>
-      <div id="audit-body"><div class="empty">加载中…</div></div>
-    </div>`;
-
-  (document.getElementById('audit-decision') as HTMLSelectElement).value = auditDecision;
-  (document.getElementById('audit-action') as HTMLInputElement).value = auditAction;
-  document.getElementById('audit-apply')?.addEventListener('click', () => {
-    auditDecision = (document.getElementById('audit-decision') as HTMLSelectElement).value;
-    auditAction = (document.getElementById('audit-action') as HTMLInputElement).value.trim();
-    auditOffset = 0;
-    void loadAudit();
-  });
-  document.getElementById('audit-reset')?.addEventListener('click', () => {
-    auditDecision = '';
-    auditAction = '';
-    auditOffset = 0;
-    void renderAudit();
-  });
-  document.getElementById('audit-auto')?.addEventListener('change', (event) => {
-    auditAutoRefresh = (event.currentTarget as HTMLInputElement).checked;
-    if (auditAutoRefresh) void loadAudit();
-  });
-  await loadAudit();
-}
-
-async function loadAudit(): Promise<void> {
-  const requestId = ++auditRequestId;
-  const params = new URLSearchParams({
-    limit: '50',
-    offset: String(auditOffset),
-  });
-  if (auditDecision) params.set('decision', auditDecision);
-  if (auditAction) params.set('action', auditAction);
-  const page = await api<AuditPage>(`/api/audit?${params.toString()}`);
-  if (requestId !== auditRequestId) return;
-  auditPage = page;
-  renderAuditBody();
-}
-
-function renderAuditBody(): void {
-  const body = document.getElementById('audit-body');
-  if (!body) return;
-  const page = auditPage;
-  const items = page?.items ?? [];
-  const total = page?.total ?? 0;
-  const limit = page?.limit ?? 50;
-  const offset = page?.offset ?? 0;
-  const pageCount = Math.max(1, Math.ceil(total / Math.max(1, limit)));
-  const pageNumber = Math.floor(offset / Math.max(1, limit)) + 1;
-  const start = items.length > 0 ? offset + 1 : 0;
-  const end = offset + items.length;
-  const rows =
-    items.length === 0
-      ? `<tr><td colspan="8"><div class="empty">没有审计记录</div></td></tr>`
-      : items
-          .map(
-            (item) => `<tr>
-        <td>${esc(fmtTime(item.createdAt))}</td>
-        <td>${esc(item.action)}</td>
-        <td>${esc(item.targetType)} / ${esc(item.targetHash)}</td>
-        <td><span class="tag ${item.decision === 'allowed' ? 'ok' : 'bad'}">${esc(item.decision)}</span></td>
-        <td>${esc(item.reason)}</td>
-        <td>${item.messageLength ?? '—'}</td>
-        <td><code>${esc(item.messageHash ?? '—')}</code></td>
-        <td>${item.retcode ?? '—'}</td>
-      </tr>`,
-          )
-          .join('');
-
-  body.innerHTML = `
-    <div class="table-wrap"><table>
-      <thead><tr><th>时间</th><th>动作</th><th>目标哈希</th><th>决策</th><th>原因</th><th>长度</th><th>内容哈希</th><th>retcode</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table></div>
-    <div class="spread" style="margin-top:12px">
-      <span class="muted small">${start}–${end} / ${total} · 第 ${pageNumber} / ${pageCount} 页</span>
-      <div class="row">
-        <button class="btn" id="audit-prev" ${offset <= 0 ? 'disabled' : ''}>上一页</button>
-        <button class="btn" id="audit-next" ${pageNumber >= pageCount ? 'disabled' : ''}>下一页</button>
-      </div>
-    </div>`;
-
-  document.getElementById('audit-prev')?.addEventListener('click', () => {
-    auditOffset = Math.max(0, auditOffset - limit);
-    void loadAudit();
-  });
-  document.getElementById('audit-next')?.addEventListener('click', () => {
-    auditOffset += limit;
-    void loadAudit();
-  });
-}
-
 async function renderMetrics(): Promise<void> {
   metricsRevealPending = true;
   view.innerHTML = `
-    <div class="page-head"><div><h1>指标</h1><p>SendGuard 放行/拦截与熔断状态；数据来自 /api/metrics。</p></div>
+    <div class="page-head"><div><h1>指标</h1><p>运行状态与队列；数据来自 /api/metrics。</p></div>
     <button class="btn" id="metrics-refresh">刷新</button></div>
-    <div class="card span-12">
-      <div class="row" id="metrics-summary">
-        <span class="skeleton skeleton-line" style="width:104px"></span>
-        <span class="skeleton skeleton-line" style="width:82px"></span>
-        <span class="skeleton skeleton-line short"></span>
-      </div>
-      <div id="metrics-chart-wrap" class="chart-wrap skeleton skeleton-chart"></div>
-      <div class="legend"><span class="allowed">allowed</span><span class="denied">denied</span></div>
+    <div class="card">
+      <div class="row" id="metrics-summary"></div>
+      <details style="margin-top:14px"><summary class="muted small">原始指标文本</summary><pre id="metrics-raw" class="small" style="white-space:pre-wrap"></pre></details>
     </div>`;
   document.getElementById('metrics-refresh')?.addEventListener('click', () => {
     metricsRevealPending = true;
@@ -1165,202 +803,28 @@ async function renderMetrics(): Promise<void> {
 
 async function refreshMetrics(): Promise<void> {
   const text = await apiText('/api/metrics');
-  const allowed = matchNumber(text, 'polaris_send_guard_allowed_total');
-  const denied = [...text.matchAll(/polaris_send_guard_denied_total\{[^}]*\}\s+([0-9.]+)/g)].reduce(
-    (sum, match) => sum + Number(match[1] ?? 0),
-    0,
-  );
-  const open = /polaris_send_guard_circuit\{state="OPEN"\}\s+1/.test(text);
-  const stopped = /polaris_send_disabled\s+1/.test(text);
-
-  metricsHistory.push({ time: Date.now(), allowed, denied });
-  if (metricsHistory.length > 60) metricsHistory.shift();
-
-  const reveal = metricsRevealPending;
+  const state = /polaris_health_state\{state="([A-Z]+)"\}\s+1/.exec(text)?.[1] ?? 'UNKNOWN';
+  const ready = matchNumber(text, 'polaris_ready');
+  const clientUp = matchNumber(text, 'polaris_client_up');
+  const pending = matchNumber(text, 'polaris_pending_events');
+  const replayable = matchNumber(text, 'polaris_replayable_events');
   const summary = document.getElementById('metrics-summary');
   if (summary) {
     summary.innerHTML = `
-      <span class="tag ${open ? 'bad' : 'ok'}">circuit ${open ? 'OPEN' : 'CLOSED'}</span>
-      <span class="tag ${stopped ? 'bad' : 'ok'}">${stopped ? 'STOP' : 'running'}</span>
-      <span class="muted small">allowed ${allowed} · denied ${denied}</span>`;
-    summary.className = reveal ? 'row data-reveal' : 'row';
+      <span class="tag ${state === 'ONLINE' ? 'ok' : state === 'OFFLINE' ? 'bad' : 'warn'}">health ${esc(state)}</span>
+      <span class="tag ${ready ? 'ok' : 'bad'}">ready ${ready ? 'yes' : 'no'}</span>
+      <span class="tag ${clientUp ? 'ok' : 'warn'}">onebot ${clientUp ? 'up' : 'down'}</span>
+      <span class="muted small">pending ${pending} · replayable ${replayable}</span>`;
+    summary.className = metricsRevealPending ? 'row data-reveal' : 'row';
   }
-  const chart = document.getElementById('metrics-chart-wrap');
-  if (chart) {
-    chart.className = reveal ? 'chart-wrap data-reveal' : 'chart-wrap';
-    chart.innerHTML = `${drawChart(metricsHistory)}<div class="chart-tooltip" id="metrics-tooltip" hidden></div>`;
-    attachChartHover(chart, metricsHistory.slice());
-  }
+  const raw = document.getElementById('metrics-raw');
+  if (raw) raw.textContent = text;
   metricsRevealPending = false;
 }
 
 function matchNumber(text: string, name: string): number {
   const match = new RegExp(`${name}\\s+([0-9.]+)`).exec(text);
   return Number(match?.[1] ?? 0);
-}
-
-const CHART = {
-  width: 820,
-  height: 260,
-  left: 48,
-  right: 20,
-  top: 18,
-  bottom: 36,
-};
-
-function chartMax(samples: Sample[]): number {
-  const raw = Math.max(1, ...samples.map((sample) => Math.max(sample.allowed, sample.denied)));
-  const magnitude = 10 ** Math.floor(Math.log10(raw));
-  const normalized = raw / magnitude;
-  const step = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
-  return Math.max(4, step * magnitude);
-}
-
-function chartTickLabel(value: number): string {
-  return Number.isInteger(value) ? String(value) : value.toFixed(1);
-}
-
-function chartX(index: number, count: number): number {
-  const plotWidth = CHART.width - CHART.left - CHART.right;
-  return count === 1 ? CHART.left + plotWidth / 2 : CHART.left + (index / (count - 1)) * plotWidth;
-}
-
-function chartY(value: number, max: number): number {
-  const plotHeight = CHART.height - CHART.top - CHART.bottom;
-  return CHART.top + plotHeight - (value / max) * plotHeight;
-}
-
-function timeLabel(time: number): string {
-  return new Date(time).toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  });
-}
-
-function drawChart(samples: Sample[]): string {
-  if (samples.length === 0) {
-    return `<div class="empty">暂无样本</div>`;
-  }
-  const max = chartMax(samples);
-  const plotHeight = CHART.height - CHART.top - CHART.bottom;
-  const gridCount = max % 5 === 0 ? 5 : max % 4 === 0 ? 4 : 5;
-  const grid = Array.from({ length: gridCount + 1 }, (_, index) => {
-    const value = (max * (gridCount - index)) / gridCount;
-    const y = chartY(value, max);
-    return `<line class="chart-grid-line" x1="${CHART.left}" y1="${y.toFixed(1)}" x2="${CHART.width - CHART.right}" y2="${y.toFixed(1)}" />
-      <text class="chart-axis" x="${CHART.left - 10}" y="${(y + 4).toFixed(1)}" text-anchor="end">${chartTickLabel(value)}</text>`;
-  }).join('');
-
-  const tickCount = Math.min(5, samples.length);
-  const tickIndexes = [
-    ...new Set(
-      Array.from({ length: tickCount }, (_, index) =>
-        Math.round((index * (samples.length - 1)) / Math.max(1, tickCount - 1)),
-      ),
-    ),
-  ];
-  const xAxis = tickIndexes
-    .map((index) => {
-      const sample = samples[index];
-      if (!sample) return '';
-      const x = chartX(index, samples.length);
-      const anchor = index === 0 ? 'start' : index === samples.length - 1 ? 'end' : 'middle';
-      return `<line class="chart-grid-line vertical" x1="${x.toFixed(1)}" y1="${CHART.top}" x2="${x.toFixed(1)}" y2="${CHART.top + plotHeight}" />
-        <text class="chart-axis" x="${x.toFixed(1)}" y="${CHART.height - 12}" text-anchor="${anchor}">${esc(timeLabel(sample.time))}</text>`;
-    })
-    .join('');
-
-  const allowedPoints = samples
-    .map(
-      (sample, index) =>
-        `${chartX(index, samples.length).toFixed(1)},${chartY(sample.allowed, max).toFixed(1)}`,
-    )
-    .join(' ');
-  const deniedPoints = samples
-    .map(
-      (sample, index) =>
-        `${chartX(index, samples.length).toFixed(1)},${chartY(sample.denied, max).toFixed(1)}`,
-    )
-    .join(' ');
-
-  return `<svg class="chart" viewBox="0 0 ${CHART.width} ${CHART.height}" role="img" aria-label="SendGuard allowed/denied trend with time axis">
-    <g>${grid}</g>
-    <g>${xAxis}</g>
-    <line class="chart-guide" id="chart-guide" x1="0" y1="${CHART.top}" x2="0" y2="${CHART.top + plotHeight}" visibility="hidden" />
-    <polyline class="chart-series allowed" fill="none" points="${allowedPoints}" />
-    <polyline class="chart-series denied" fill="none" points="${deniedPoints}" />
-    <circle class="chart-point allowed" id="chart-dot-allowed" r="3.5" visibility="hidden" />
-    <circle class="chart-point denied" id="chart-dot-denied" r="3.5" visibility="hidden" />
-  </svg>`;
-}
-
-function attachChartHover(wrap: HTMLElement, samples: Sample[]): void {
-  const svg = wrap.querySelector('svg');
-  const tooltip = wrap.querySelector<HTMLElement>('#metrics-tooltip');
-  const guide = wrap.querySelector<SVGLineElement>('#chart-guide');
-  const allowedDot = wrap.querySelector<SVGCircleElement>('#chart-dot-allowed');
-  const deniedDot = wrap.querySelector<SVGCircleElement>('#chart-dot-denied');
-  if (
-    !(svg instanceof SVGSVGElement) ||
-    !tooltip ||
-    !guide ||
-    !allowedDot ||
-    !deniedDot ||
-    samples.length === 0
-  ) {
-    return;
-  }
-
-  const max = chartMax(samples);
-  const plotHeight = CHART.height - CHART.top - CHART.bottom;
-  const move = (event: PointerEvent): void => {
-    const rect = svg.getBoundingClientRect();
-    if (rect.width === 0) return;
-    const scale = rect.width / CHART.width;
-    const x = (event.clientX - rect.left) / scale;
-    const ratio = (x - CHART.left) / (CHART.width - CHART.left - CHART.right);
-    const index = Math.min(
-      samples.length - 1,
-      Math.max(0, Math.round(ratio * Math.max(1, samples.length - 1))),
-    );
-    const sample = samples[index];
-    if (!sample) return;
-
-    const pointX = chartX(index, samples.length);
-    const allowedY = chartY(sample.allowed, max);
-    const deniedY = chartY(sample.denied, max);
-    guide.setAttribute('x1', pointX.toFixed(1));
-    guide.setAttribute('x2', pointX.toFixed(1));
-    guide.setAttribute('y1', String(CHART.top));
-    guide.setAttribute('y2', String(CHART.top + plotHeight));
-    guide.setAttribute('visibility', 'visible');
-    allowedDot.setAttribute('cx', pointX.toFixed(1));
-    allowedDot.setAttribute('cy', allowedY.toFixed(1));
-    allowedDot.setAttribute('visibility', 'visible');
-    deniedDot.setAttribute('cx', pointX.toFixed(1));
-    deniedDot.setAttribute('cy', deniedY.toFixed(1));
-    deniedDot.setAttribute('visibility', 'visible');
-
-    tooltip.innerHTML = `
-      <strong>${esc(timeLabel(sample.time))}</strong>
-      <span><i class="allowed"></i>allowed <b>${sample.allowed}</b></span>
-      <span><i class="denied"></i>denied <b>${sample.denied}</b></span>`;
-    tooltip.hidden = false;
-    const cssX = pointX * scale;
-    tooltip.style.left = `${Math.min(Math.max(cssX, 82), Math.max(82, rect.width - 82))}px`;
-    tooltip.style.top = '8px';
-  };
-  const hide = (): void => {
-    tooltip.hidden = true;
-    guide.setAttribute('visibility', 'hidden');
-    allowedDot.setAttribute('visibility', 'hidden');
-    deniedDot.setAttribute('visibility', 'hidden');
-  };
-  svg.addEventListener('pointermove', move);
-  svg.addEventListener('pointerdown', move);
-  svg.addEventListener('pointerleave', hide);
 }
 
 function confirmPhrase(
@@ -1538,7 +1002,6 @@ onboardingOpen.addEventListener('click', () => {
 });
 
 window.addEventListener('hashchange', () => {
-  auditOffset = 0;
   render(true);
 });
 
@@ -1555,15 +1018,3 @@ window.setInterval(() => {
   void loadCore(false).catch(() => {});
   if (route === 'metrics') void refreshMetrics().catch(() => {});
 }, 5000);
-window.setInterval(() => {
-  if (
-    !token ||
-    route !== 'audit' ||
-    !auditAutoRefresh ||
-    document.visibilityState !== 'visible' ||
-    modalRoot.innerHTML !== ''
-  ) {
-    return;
-  }
-  void loadAudit().catch(() => {});
-}, 2000);

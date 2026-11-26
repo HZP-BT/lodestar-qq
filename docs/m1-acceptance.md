@@ -19,7 +19,7 @@
   - `pnpm --filter @lodestar/adapter-mock test`
   - `pnpm --filter @lodestar/adapter-mock build`
 - 验收：
-  - **Core 侧已完成**：`EventSink.publish`、`EventStore` schema、A1–A6、`OutboxDispatcher`、`SendGuard`/STOP 测试；
+  - **Core 侧已完成**：`EventSink.publish`、`EventStore` schema、A1–A6、`OutboxDispatcher` 测试；
   - **`@lodestar/adapter-mock` 已完成**：MockAdapter 的 emit/freeze/freezeEvents/crash/canary/authFail/slowAction 与动作桩；HTTP 控制面已实现；
   - **Core↔mock 联调**：`CoreRuntime` 把 Adapter→EventSink→Outbox→ReverseWsClient 串起来，E2E 测试通过控制面 emit/freeze/resume 并到达 AstrBot mock。
 - 状态：✅ 核心部分完成（72 个测试）。
@@ -54,7 +54,7 @@
   - 注册为 Windows 计划任务 `LodestarCore`（登录时启动，失败重启）；
   - 日志目录、数据目录、配置校验有明确输出；
   - 不要求用户手工设置一堆环境变量（`config/polaris.json` 为主，`.env.example` 仅备选）；
-  - `stop.ps1` 写 `data/STOP` 并停止任务/进程；
+  - `stop.ps1` 停止任务/进程；
   - `-DevMock` 可把任务入口临时指向 `scripts/dev-mock.mjs`，`install.log` 记录 `MODE=dev-mock`；dev-mock 占用 18080/18090，与真实后端互斥；
   - `-Entrypoint <path>` 可显式覆盖入口，优先级高于 `config.entrypoint`。
 - 状态：🚧 脚本与配置模板已交付；本环境不自动注册计划任务（避免改动你的系统），需你运行 `install.ps1` 验收。

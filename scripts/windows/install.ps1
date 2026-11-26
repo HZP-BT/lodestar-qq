@@ -2,8 +2,6 @@ param(
     [string]$SelfId = "",
     [string]$Token = "",
     [string]$Url = "",
-    [string]$GroupId = "",
-    [int]$DailyQuota = 0,
     [string]$ConfigPath = "",
     [string]$TaskName = "LodestarCore",
     [string]$Entrypoint = "",
@@ -65,13 +63,6 @@ try {
     }
     if ($Url) {
         $config.onebot.url = $Url
-    }
-    if ($GroupId) {
-        $groups = @($GroupId.Split(",") | ForEach-Object { $_.Trim() } | Where-Object { $_ })
-        $config.sendGuard.groupWhitelist = @($groups | ForEach-Object { [int]$_ })
-    }
-    if ($DailyQuota -gt 0) {
-        $config.sendGuard.dailyQuota = $DailyQuota
     }
 
     if ($DevMock -and (-not $config.onebot.selfId -or [int]$config.onebot.selfId -le 0)) {

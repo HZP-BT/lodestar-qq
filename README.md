@@ -23,7 +23,7 @@ Lodestar 是一个 **Apache-2.0 的 OneBot v11 实现**，用来替代 NapCat、
 - 只使用测试号。
 
 首次运行需要在 QQ 窗口登录测试号（脚本会提示并等待）；之后再次双击就是纯启动。
-完整步骤、SendGuard 默认值、群/私聊配置、故障排查和回滚见
+完整步骤、配置说明、故障排查和回滚见
 [安装与启动指南](docs/quickstart.md)。
 
 > 注入/补丁路线属于第三方方案，与腾讯/QQ 无隶属或授权关系；它只能降低、不能归零
@@ -47,7 +47,6 @@ Lodestar 是一个 **Apache-2.0 的 OneBot v11 实现**，用来替代 NapCat、
 AstrBot ── reverse WS (6199/ws, Bearer token) ──►  @lodestar/core
                                                    ├─ OneBot v11 反向 WS 客户端
                                                    ├─ 动作路由 / echo 精确回传
-                                                   ├─ SendGuard（STOP/白名单/@/配额/限频）
                                                    ├─ EventSink.publish（拒绝 meta、去重、outbox）
                                                    ├─ EventStore（node:sqlite：dedup/outbox/message_ref）
                                                    ├─ OutboxDispatcher（按 deliverSeq 重放）
@@ -56,7 +55,7 @@ AstrBot ── reverse WS (6199/ws, Bearer token) ──►  @lodestar/core
                                                    └─ 结构化日志（pino）
 ```
 
-`SendGuard` 与 `EventSink` 都在 Core，与外部 OneBot 后端或原生注入后端无关。`@lodestar/adapter-mock` 用于本地演示，Docker Compose 与 WebUI 提供可观测入口。
+`EventSink` 在 Core，与外部 OneBot 后端或原生注入后端无关。`@lodestar/adapter-mock` 用于本地演示，Web 面板提供状态入口。
 
 - [ADR 0001：后端范围与官方 Bot API 的否决](docs/adr/0001-backend-scope.md)
 - [ADR 0002：Core 与适配器的许可证边界](docs/adr/0002-license-boundary.md)
@@ -93,7 +92,7 @@ Lodestar demo is running
 curl -X POST http://127.0.0.1:18090/emit -H "Content-Type: application/json" -d "{\"text\":\"hello\"}"
 ```
 
-这条路径不需要 QQ、不需要 patcher，适合先验证 Core、SendGuard、审计和 WebUI。真实 QQ 需要额外的 OneBot 上游或独立 native adapter，不在 Core 仓库内分发。
+这条路径不需要 QQ、不需要 patcher，适合先验证 Core 和 WebUI。真实 QQ 需要额外的 OneBot 上游或独立 native adapter，不在 Core 仓库内分发。
 
 ## 快速开始（M1.1）
 
@@ -163,11 +162,11 @@ OneBot v11 规范只定义 `status` / `retcode` 字段，**没有规定数值表
 | 1501 | failed | 动作处理超时 | Lodestar 自定 | 主动生成 | 否（动作级） |
 | 1502 | failed | 适配器不可用 | Lodestar 自定 | 预留 | 由上层决定 |
 | 1503 | failed | 背压/队列满 | Lodestar 自定 | M1.2 主动生成（outbox） | 可延迟重试 |
-| 1504 | failed | Lodestar 限流/配额 | Lodestar 自定 | M1.2 主动生成（SendGuard） | 可延迟重试 |
+| 1504 | failed | 限流/配额（上游返回时透传） | Lodestar 自定 | 透传 | 由上层决定 |
 | 1505 | failed | 版本不兼容 | Lodestar 自定 | 预留 | 否 |
 | 1506 | failed | 适配器鉴权失败 | Lodestar 自定 | 预留 | 否 |
 | 1507 | failed | 消息记录不存在（`get_msg`） | Lodestar 自定 | 预留 | 否 |
-| 1508 | failed | 发送被 STOP 禁用 | Lodestar 自定 | 主动生成（SendGuard） | 否 |
+| 1508 | failed | 发送被禁用（预留码） | Lodestar 自定 | 预留 | 否 |
 
 > `1401/1403` 在 CQHTTP 中通常不会出现在动作响应里：握手鉴权失败会直接断开连接。Lodestar 在连接层用 `auth_failed` 表达 401/403，不把鉴权失败当作动作 retcode。100 当前只用于 `params` 不是对象这一条路径；未来字段校验也归 100。
 
@@ -257,8 +256,8 @@ powershell -ExecutionPolicy Bypass -File scripts\windows\setup.ps1
 ### mock 演示包（开发/演示，不是 external）
 
 `Lodestar-Demo.cmd` 的 mock 包自带 `node.exe`、Core、WebUI 和 mock 后端，不需要 Node/pnpm。
-面板会明确显示 **“演示模式（Mock）”**，状态不代表真实 QQ/AstrBot；它只用于演示界面和
-SendGuard，不参与 external 流程。
+面板会明确显示 **“演示模式（Mock）”**，状态不代表真实 QQ/AstrBot；它只用于演示界面，
+不参与 external 流程。
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\release\package-windows.ps1 -IncludeNode
@@ -278,8 +277,7 @@ powershell -ExecutionPolicy Bypass -File scripts\release\package-windows.ps1 -In
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\windows\install.ps1 `
   -SelfId "123456789" `
-  -Token "your-token" `
-  -GroupId "987654321"
+  -Token "your-token"
 ```
 
 安装脚本会：
@@ -301,7 +299,7 @@ powershell -ExecutionPolicy Bypass -File scripts\windows\stop.ps1
 powershell -ExecutionPolicy Bypass -File scripts\windows\uninstall.ps1
 ```
 
-- `stop.ps1` 先写 `data/STOP`（下一次发送立即停发），再停止计划任务/进程。
+- `stop.ps1` 停止计划任务/进程。
 - 计划任务在**当前用户登录时**启动；若需要未登录也运行，请改用 Windows 服务（需管理员/服务账号），不要用计划任务硬绕。
 - 若 `Register-ScheduledTask` 被拒绝，请用管理员 PowerShell 重新运行 `install.ps1`。
 - 配置模板：[config/polaris.example.json](config/polaris.example.json)；环境变量覆盖参考：[.env.example](.env.example)。
@@ -348,8 +346,8 @@ NapCat 的 Windows 路线是启动注入。S0 已在该路线上完成自研 loa
 最小验证，不再重复论证路线。
 
 S0 验证已收束，S0 边界、S1 关键路径和 backlog 见
-[S0 结案与 S1 边界](docs/design/s0-closure-and-s1-boundary.md)。S1 只做 SendGuard
-与低量观察，不新增收发/媒体功能点。
+[S0 结案与 S1 边界](docs/design/s0-closure-and-s1-boundary.md)。S1 的 SendGuard 部分
+已移除（[ADR 0009](docs/adr/0009-remove-send-guard.md)）；这里保留低量观察的边界记录。
 
 ## 真实 OneBot 上游（NapCat / SnowLuma）
 
@@ -387,8 +385,8 @@ powershell -ExecutionPolicy Bypass -File scripts\windows\install.ps1 -Entrypoint
 
 ## Web 控制面板（本地）
 
-S1-b 起提供只监听 `127.0.0.1` 的本地控制面板，用于查看状态、审计、指标并管控 SendGuard；
-**不提供发送框**，发送仍只走 OneBot/AstrBot → Core → SendGuard。
+只监听 `127.0.0.1` 的本地状态面板，用于查看连接、登录态、队列和指标；
+**不提供发送框**，发送仍只走 AstrBot → Core → loader。
 
 ```bash
 pnpm build
@@ -399,12 +397,11 @@ LODESTAR_ADMIN_TOKEN=replace-with-a-local-token node scripts/upstream.mjs
 ```
 
 打开 `http://127.0.0.1:18081`，输入同一管理密码。Windows 用 `$env:LODESTAR_ADMIN_TOKEN="..."`。
-面板包含总览、协议端配置、SendGuard、审计、指标、系统和三步初始化引导；支持深色/浅色主题切换。
+面板包含总览、协议端配置、指标、系统和三步初始化引导；支持深色/浅色主题切换。
 系统页可以修改管理密码，并终止当前 Core 进程（QQ、loader、AstrBot 不受影响）。协议端配置保存后
-平滑重启 Core 连接（面板不断线），总览异常可直接“尝试重启核心服务”；审计默认 2s
-自动刷新，指标图带刻度、时间轴和悬停数值。急停/恢复/reset 统一收纳在 SendGuard 页，
-并需要输入确认词。面板不做公网部署、多用户登录、移动端适配；审计接口只返回哈希/元数据，
-不返回正文或明文 UID。详见 [Web 控制面板设计](docs/design/admin-panel.md)。
+平滑重启 Core 连接（面板不断线），总览异常可直接“尝试重启核心服务”；指标页展示健康状态、
+就绪、OneBot 连接和队列长度。面板不做公网部署、多用户登录、移动端适配。
+详见 [Web 控制面板设计](docs/design/admin-panel.md)。
 
 ## 存储
 
@@ -420,7 +417,6 @@ lodestar-qq/
 │  ├─ src/storage/         # schema、node:sqlite driver、EventStore、OutboxDispatcher、运行期探测
 │  ├─ src/observability/   # /healthz /readyz /metrics
 │  ├─ src/runtime/         # CoreRuntime：Adapter→EventSink→Outbox→ReverseWsClient；health.ts 运行状态
-│  ├─ src/send-guard.ts    # STOP/白名单/@触发/配额/限频/熔断/审计
 │  ├─ src/admin/           # 本地管理 HTTP API（127.0.0.1 + token）
 │  ├─ src/config.ts        # 配置 schema
 │  ├─ src/logger.ts        # 结构化日志
@@ -431,8 +427,8 @@ lodestar-qq/
 │  ├─ src/                 # mock-adapter.ts、control-server.ts
 │  └─ tests/
 ├─ packages/adapter-onebot-upstream/  # 真实 OneBot 上游 WS 客户端
-├─ packages/web/           # 本地 SendGuard 控制面板（零框架 TS SPA）
-├─ docs/adr/               # 架构决策记录（0001–0007）
+├─ packages/web/           # 本地状态面板（零框架 TS SPA）
+├─ docs/adr/               # 架构决策记录（0001–0009）
 ├─ docs/design/            # AdapterInterface、mock 用例
 ├─ docs/evidence/          # 原始依赖证据
 ├─ docs/m1-acceptance.md   # M1“一条命令启动”子项
@@ -466,29 +462,20 @@ lodestar-qq/
 
 **注入路线属于第三方方案，与腾讯/QQ 无隶属或授权关系。它只能降低、不能归零账号被风控、踢下线或封禁的风险；风险由使用者自担。**
 
-Lodestar 配套的降风险手段是：
+Lodestar 不内置发送侧的风控、白名单或限流：AstrBot 发什么就发什么。风险控制交给使用方式：
 
-- **最小频控**：按账号/群/动作限流，默认保守。
-- **行为正常化**：随机延迟、静默时段、重复抑制、群白名单、@ 触发、每日额度。
-- **可一键停用**：发现异常时立即停止发送并保留状态，人工处理后再恢复。
-- **可观测**：断连原因、连接状态、消息成功率、内存曲线都可查。
-
-**SendGuard（S1-b 产品化）**：默认空群白名单（拒绝所有群发）、私聊开启（白名单空=允许所有私聊，
-填写后仅允许列表）、@ 触发默认关闭、日配额 200、群配额 80、同群最小间隔 2s、静默时段默认关闭、
-重复抑制、`data/STOP` 立即生效；配额/速率/熔断/审计持久化到 SQLite，审计只记元数据不记正文；
-连续发送失败或显式安全信号会打开熔断，只允许人工 reset。详见
-[ADR 0007](docs/adr/0007-risk-controls.md)。
-
-**合规性由使用方式兜底，而不是由后端类型兜底。** 请遵守《QQ 用户协议》和当地法律，仅用于个人或小规模合法用途。
+- 只在测试群、只响应被 @ 或唤醒前缀触发的消息，不做主动群发；
+- 控制消息频率（在 AstrBot 侧配置或人工掌握）；
+- 发现异常时立即停止 Core 进程并关闭 QQ；
+- **合规性由使用方式兜底，而不是由后端类型兜底。** 请遵守《QQ 用户协议》和当地法律，仅用于个人或小规模合法用途。
 
 ### 24h 主力号冒烟的风险说明
 
 M2 可能用你的主力号做一次 24h 冒烟。必须按最小风险执行：
 
-- 只在一个白名单测试群里、只在被 @ 时回复；不开主动群发、不加好友、不做营销。
-- 最小消息量：建议 ≤1 条/15 分钟，日上限 ≤96 条；脚本提供每日额度与一键停用。
-- 随时可一键停用：停止 Core 进程；Core SendGuard 在每次发送前同步检查 `data/STOP`，
-  下一次发送立即返回 1508（5s timer 只维护状态/指标）。
+- 只在一个测试群里、只在被 @ 时回复；不开主动群发、不加好友、不做营销。
+- 最小消息量：建议 ≤1 条/15 分钟。
+- 随时可一键停用：Ctrl-C 或停止 Core 进程，再退出 QQ。
 - **即使如此，账号仍可能被风控/踢下线/封禁；风险由使用者自担。** 不能接受该风险时，不要用主力号，继续用 mock/回环。
 - 72h 真实投递仍以 mock/回环为主；24h 冒烟只证明“能稳定跑”，不证明“零风险”。
 
@@ -517,12 +504,13 @@ M2 可能用你的主力号做一次 24h 冒烟。必须按最小风险执行：
 - [ADR 0004：连接、鉴权与 heartbeat 状态机](docs/adr/0004-connection-auth-heartbeat.md)
 - [ADR 0005：Adapter 事件契约与投递语义](docs/adr/0005-event-contract.md)
 - [ADR 0006：SQLite 存储引擎选型](docs/adr/0006-storage-engine.md)
-- [ADR 0007：风险缓释开关（频控/白名单/@触发/STOP）](docs/adr/0007-risk-controls.md)
+- [ADR 0007：风险缓释开关（已由 ADR 0009 取代）](docs/adr/0007-risk-controls.md)
+- [ADR 0008：移除独立探针，健康状态改由连接与登录态推导](docs/adr/0008-remove-probe.md)
+- [ADR 0009：移除 SendGuard](docs/adr/0009-remove-send-guard.md)
 - [AdapterInterface 设计稿](docs/design/adapter-interface.md)
 - [adapter-mock 用例清单](docs/design/adapter-mock-cases.md)
 - [S0 结案与 S1 边界](docs/design/s0-closure-and-s1-boundary.md)
 - [Web 控制面板设计](docs/design/admin-panel.md)
-- [ADR 0008：移除独立探针，健康状态改由连接与登录态推导](docs/adr/0008-remove-probe.md)
 - [安装与启动指南](docs/quickstart.md)
 - [S1-a 14 天低量观察 Runbook](docs/runbooks/s1a-14d-observation.md)
 - [S1 安全限制与测试环境清理](docs/runbooks/s1-safety-and-cleanup.md)

@@ -85,7 +85,7 @@ export type PublishResult =
         | 'shutting_down'
         | 'forbidden_event_source';
       eventKey?: string;
-      /** 背压时固定 1503；STOP 由发送路径返回 1508。 */
+      /** 背压时固定 1503。 */
       retcode?: 1503;
       retryAfterMs?: number;
     };
@@ -275,7 +275,6 @@ CREATE INDEX message_ref_expiry ON message_ref(expires_at);
 
 - Adapter 必须 `await publish()`；收到 `backpressure` 时暂停读取 QQ/上游，而不是继续堆内存。
 - **pending 全量超限**：达到 10,000 且无可删 `sent` 时，`publish` 返回 `backpressure` + `retcode:1503`；adapter 停止读取；**绝不静默丢弃、绝不删除 pending**。
-- **STOP 哨兵**：Core watchdog 每 5s 轮询 `data/STOP`；发送路径在调用 adapter 前检查内存 flag，≤5s 生效，返回 `1508 SEND_DISABLED`。
 - **绝不静默丢弃 message/notice/request**；丢弃只允许发生在 low 优先级 meta 事件。
 - 重复事件返回 `duplicate`，adapter 不应重试。
 

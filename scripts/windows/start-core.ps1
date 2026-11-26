@@ -4,9 +4,7 @@ param(
 
     [string]$Token = $env:POLARIS_ONEBOT_TOKEN,
 
-    [string]$Url = "ws://127.0.0.1:6199/ws",
-
-    [string]$GroupId = ""
+    [string]$Url = "ws://127.0.0.1:6199/ws"
 )
 
 $ErrorActionPreference = "Stop"
@@ -31,18 +29,10 @@ if (Test-Path $pidFile) {
     }
 }
 
-# Clear the kill-switch sentinel for this run.
-Remove-Item (Join-Path $dataDir "STOP") -Force -ErrorAction SilentlyContinue
-
 $env:POLARIS_ONEBOT_URL = $Url
 $env:POLARIS_ONEBOT_TOKEN = $Token
 $env:POLARIS_SELF_ID = $SelfId
 $env:POLARIS_LOG_LEVEL = "info"
-$env:POLARIS_DAILY_QUOTA = "96"
-$env:POLARIS_AT_ONLY = "1"
-if ($GroupId) {
-    $env:POLARIS_GROUP_WHITELIST = $GroupId
-}
 
 $stdout = Join-Path $logDir "core.out.log"
 $stderr = Join-Path $logDir "core.err.log"

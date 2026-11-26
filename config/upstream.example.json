@@ -8,21 +8,6 @@
     "url": "ws://127.0.0.1:3001/",
     "token": ""
   },
-  "sendGuard": {
-    "groupWhitelist": [],
-    "privateEnabled": true,
-    "privateWhitelist": [],
-    "atOnly": false,
-    "dailyQuota": 200,
-    "perGroupDailyQuota": 80,
-    "minIntervalMs": 2000,
-    "randomDelayMs": 1500,
-    "duplicateWindowMs": 60000,
-    "sendFailureThreshold": 3,
-    "auditRetentionDays": 30,
-    "quietHours": null,
-    "stopFile": "data/STOP"
-  },
   "health": {
     "host": "127.0.0.1",
     "port": 18080
@@ -31,7 +16,6 @@
     "enabled": true,
     "host": "127.0.0.1",
     "port": 18081,
-    "configPath": "config/send-guard.json",
     "webRoot": "packages/web/dist"
   },
   "databasePath": "data/polaris.db"

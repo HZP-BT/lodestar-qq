@@ -1,4 +1,7 @@
-# 24h 主力号冒烟 Runbook（M2）
+# 24h 主力号冒烟 Runbook
+
+> 注（2026-11-27）：SendGuard / STOP 哨兵已于 [ADR 0009](../adr/0009-remove-send-guard.md) 移除；
+> 本文中的 SendGuard 设置与 `data/STOP` 步骤保留为历史记录，当前版本请以“停止 Core 进程并退出 QQ”作为停用手段。（M2）
 
 ## 目标
 

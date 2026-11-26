@@ -26,11 +26,11 @@ Lodestar 只生成**有出处**的 retcode：
 | 1501 | 动作超时 | Lodestar 自定 | 主动生成 |
 | 1502 | 适配器不可用 | Lodestar 自定 | 预留 |
 | 1503 | 背压/队列满 | Lodestar 自定 | M1.2 主动生成（outbox） |
-| 1504 | Lodestar 限流/配额 | Lodestar 自定 | M1.2 主动生成（SendGuard） |
+| 1504 | 限流/配额（上游返回时透传） | Lodestar 自定 | 透传（Core 不再主动生成） |
 | 1505 | 版本不兼容 | Lodestar 自定 | 预留 |
 | 1506 | 适配器鉴权失败 | Lodestar 自定 | 预留 |
 | 1507 | 消息记录不存在 | Lodestar 自定 | 预留 |
-| 1508 | 发送被 STOP 禁用 | Lodestar 自定 | 主动生成（SendGuard） |
+| 1508 | 发送被禁用（预留码） | Lodestar 自定 | 预留（SendGuard 已移除，不再生成） |
 
 **动作不存在使用 `1404`**，不使用 `103`。CQHTTP 3.4 的 `103` 不用于 Lodestar。
 

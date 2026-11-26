@@ -1,4 +1,7 @@
-# S1 安全限制与测试环境清理 Runbook
+# S1 安全限制与测试环境清理
+
+> 注（2026-11-27）：SendGuard / STOP 哨兵已于 [ADR 0009](../adr/0009-remove-send-guard.md) 移除；
+> 本文中的 SendGuard 步骤保留为历史记录，当前版本请以“停止 Core 进程”作为停用手段。 Runbook
 
 > 适用：S1 低量观察、SendGuard 安全壳、NTQQ 自研 loader 的测试环境。
 > 本文合并**硬性安全限制**、**停止/回滚条件**和**测试环境清理步骤**。

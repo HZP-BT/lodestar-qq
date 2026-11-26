@@ -2,13 +2,7 @@ $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $logDir = Join-Path $root "logs"
-$dataDir = Join-Path $root "data"
 $pidFile = Join-Path $logDir "polaris-core.pid"
-
-New-Item -ItemType Directory -Force $dataDir | Out-Null
-
-# Kill switch for adapters that support it (M2+). The core itself is stopped below.
-New-Item -ItemType File -Force (Join-Path $dataDir "STOP") | Out-Null
 
 if (-not (Test-Path $pidFile)) {
     Write-Host "No PID file; Lodestar core is not running."
@@ -33,4 +27,4 @@ if ($process) {
 }
 
 Remove-Item $pidFile -Force -ErrorAction SilentlyContinue
-Write-Host "Kill switch written: $dataDir\STOP"
+Write-Host "Lodestar core stopped."

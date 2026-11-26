@@ -134,9 +134,8 @@ outbox 状态：
 - `publish` 返回 `delivered` / `queued` / `duplicate` / `backpressure` / `not_connected` / `shutting_down` / `forbidden_event_source`。
 - adapter 必须 `await publish()`；收到 backpressure 时暂停读取上游，禁止无界堆内存。
 - **pending 全量超限**：达到 10,000 且没有可删的 `sent` 时，`publish()` 返回 `{accepted:false, reason:'backpressure', retcode:1503}`；adapter 必须停止读取上游；**绝不静默丢弃、绝不删除 pending**。
-- **STOP 哨兵**：`data/STOP` 由 Core 的 watchdog 每 5s 轮询；发送路径在调用 adapter 前检查内存 flag，生效延迟上界 5s；返回 `1508 SEND_DISABLED`。详见 ADR 0007。
+- （2026-11-27：STOP 哨兵与 1508 停止语义已由 [ADR 0009](0009-remove-send-guard.md) 移除；MOCK-09 只保留背压/队列断言。）
 - MOCK-09 断言：队列不超上限、normal 不丢、纯 pending 超限返回 1503、RSS 不随注入线性增长。
-- MOCK-09 还断言：STOP 写入后 ≤5s 内新的 send 动作返回 1508，且没有消息被静默丢弃。
 
 ## 后果
 

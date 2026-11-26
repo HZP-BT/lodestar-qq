@@ -43,7 +43,6 @@ try {
 
 Copy-Item -Path (Join-Path $root "packages\web\dist\*") -Destination (Join-Path $out "web") -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $root "config\upstream.example.json") -Destination (Join-Path $out "config") -Force
-Copy-Item -LiteralPath (Join-Path $root "config\send-guard.example.json") -Destination (Join-Path $out "config") -Force
 Copy-Item -Path (Join-Path $root "spike\ntqq-loader\*") -Destination (Join-Path $out "spike\ntqq-loader") -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $root "scripts\windows\bootstrap-external.ps1") -Destination (Join-Path $out "bootstrap-external.ps1") -Force
 Copy-Item -LiteralPath (Join-Path $root "docs\quickstart.md") -Destination (Join-Path $out "README.md") -Force
@@ -136,7 +135,7 @@ Lodestar（Windows x64）安装包
 3. 允许 UAC，并在弹出的 QQ 窗口登录测试号。
 4. 面板：http://127.0.0.1:18081；管理 token 在 setup 窗口打印。
 
-完整说明、SendGuard 配置、故障排查和回滚见 README.md。
+完整说明、故障排查和回滚见 README.md。
 '@
 Set-Content -Path (Join-Path $out "START-HERE.txt") -Value $start -Encoding UTF8
 
