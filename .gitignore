@@ -8,6 +8,8 @@ coverage/
 data/
 logs/
 /release/
+/release-linux/
+/lodestar-*-linux-x64.tar.gz
 .tmp/
 config/polaris.json
 config/upstream.json

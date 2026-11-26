@@ -1,0 +1,25 @@
+[Unit]
+Description=Lodestar Core (OneBot v11 gateway for AstrBot)
+Documentation=https://github.com/HZP-BT/lodestar-qq
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/lodestar
+ExecStart=/usr/bin/node /opt/lodestar/lodestar.cjs
+Restart=on-failure
+RestartSec=5
+Environment=NODE_ENV=production
+# Optional: override the config path (defaults to ./config/upstream.json)
+# Environment=LODESTAR_UPSTREAM_CONFIG=/opt/lodestar/config/upstream.json
+
+# Hardening (adjust if you keep data outside the install dir)
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/lodestar/data /opt/lodestar/logs /opt/lodestar/config
+
+[Install]
+WantedBy=multi-user.target

@@ -26,6 +26,20 @@ Lodestar 是一个 **Apache-2.0 的 OneBot v11 实现**，用来替代 NapCat、
 完整步骤、配置说明、故障排查和回滚见
 [安装与启动指南](docs/quickstart.md)。
 
+### Linux（网关模式）
+
+Linux 上没有原生 NTQQ loader。Lodestar 在 Linux 上作为 OneBot v11 网关运行：连接上游
+（NapCat / LagoneBot / LLOneBot 等），AstrBot 通过反向 WS 接 Lodestar。提供 Docker Compose
+和 tar + systemd 两种方式：
+
+```bash
+cp config/upstream.example.json config/upstream.json   # 填 selfId / 上游 / AstrBot / admin token
+docker compose -f docker-compose.linux.yml up -d --build
+```
+
+产物与步骤见 [Linux 部署指南](docs/linux.md)；构建 tar 包用
+`bash scripts/release/package-linux.sh`。
+
 > 注入/补丁路线属于第三方方案，与腾讯/QQ 无隶属或授权关系；它只能降低、不能归零
 > 账号被风控、踢下线或封禁的风险。请只使用测试号，并自行承担风险。
 
@@ -436,9 +450,13 @@ lodestar-qq/
 ├─ config/polaris.example.json
 ├─ .env.example
 ├─ scripts/windows/        # install/start/stop/uninstall/service-runner
+├─ scripts/release/        # 安装包构建（Windows zip / Linux tar.gz）
 ├─ scripts/dev-mock.mjs    # Compose 演示入口：mock AstrBot + CoreRuntime + health
-├─ Dockerfile
-├─ docker-compose.yml
+├─ Dockerfile              # mock 演示镜像
+├─ Dockerfile.linux        # Linux 网关运行镜像
+├─ docker-compose.yml      # mock 演示
+├─ docker-compose.linux.yml # Linux 网关部署
+├─ deploy/                 # systemd 单元示例
 ├─ .github/workflows/ci.yml
 ├─ package.json
 ├─ pnpm-workspace.yaml
@@ -512,6 +530,7 @@ M2 可能用你的主力号做一次 24h 冒烟。必须按最小风险执行：
 - [S0 结案与 S1 边界](docs/design/s0-closure-and-s1-boundary.md)
 - [Web 控制面板设计](docs/design/admin-panel.md)
 - [安装与启动指南](docs/quickstart.md)
+- [Linux 部署指南](docs/linux.md)
 - [S1-a 14 天低量观察 Runbook](docs/runbooks/s1a-14d-observation.md)
 - [S1 安全限制与测试环境清理](docs/runbooks/s1-safety-and-cleanup.md)
 - [24h 主力号冒烟 Runbook](docs/runbooks/24h-smoke.md)

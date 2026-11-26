@@ -15,6 +15,7 @@ export default tseslint.config(
       '**/coverage/**',
       'pnpm-lock.yaml',
       'release/**',
+      'release-linux/**',
       '.tmp/**',
     ],
   },

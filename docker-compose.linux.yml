@@ -1,0 +1,22 @@
+# Linux deployment: Lodestar Core as a gateway between an OneBot v11 upstream
+# (NapCat/LagoneBot on Linux) and AstrBot.
+#
+# host networking keeps the defaults working unchanged: 127.0.0.1:3001 (upstream),
+# 127.0.0.1:6199 (AstrBot) and the panel on 127.0.0.1:18081 are the host's own
+# loopback. If any of those services run in bridge-network containers, point
+# config/upstream.json at their host or LAN address instead.
+services:
+  lodestar-core:
+    build:
+      context: .
+      dockerfile: Dockerfile.linux
+    image: lodestar-core:latest
+    container_name: lodestar-core
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./config:/app/config
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      NODE_ENV: production
