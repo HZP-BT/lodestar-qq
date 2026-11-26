@@ -240,44 +240,6 @@ describe('SendGuard', () => {
     }
   });
 
-  it('opens the circuit on probe degradation and requires manual reset', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'polaris-guard-'));
-    let health = 'ONLINE';
-    try {
-      const guard = new SendGuard(baseConfig(dir), {
-        now: () => 1_000_000,
-        random: () => 0,
-        healthProvider: () => health,
-      });
-      const params = { group_id: GROUP_ID, message: atMessage('one') };
-
-      expect(guard.check('send_group_msg', params, SELF_ID)).toMatchObject({ allowed: true });
-      health = 'DEGRADED';
-      expect(guard.check('send_group_msg', params, SELF_ID)).toMatchObject({
-        allowed: false,
-        reason: 'probe_unhealthy',
-        retcode: 1502,
-      });
-      health = 'ONLINE';
-      expect(guard.check('send_group_msg', params, SELF_ID)).toMatchObject({
-        allowed: false,
-        reason: 'circuit_open',
-        retcode: 1502,
-      });
-
-      guard.resetCircuit();
-      expect(
-        guard.check(
-          'send_group_msg',
-          { group_id: GROUP_ID, message: atMessage('after-reset') },
-          SELF_ID,
-        ),
-      ).toMatchObject({ allowed: true });
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
   it('opens the circuit after repeated send failures', () => {
     const dir = mkdtempSync(join(tmpdir(), 'polaris-guard-'));
     try {

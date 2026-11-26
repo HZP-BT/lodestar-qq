@@ -156,8 +156,6 @@ async function main() {
       atOnly: false,
       quietHours: null,
     },
-    probe: { probeIntervalMs: 1_000, idleAfterMs: 1_000 },
-    enableWatchdog: true,
     logger,
   });
   await runtime.start();
@@ -184,12 +182,6 @@ async function main() {
     logger,
   });
   await admin.start();
-
-  // A quiet account becomes IDLE after idleAfterMs; this makes /readyz 200
-  // without inventing inbound traffic.
-  setTimeout(() => {
-    runtime.probe.recordActionProbe(true);
-  }, 1_500);
 
   const panelUrl = `http://${adminHost === '0.0.0.0' ? '127.0.0.1' : adminHost}:${adminPort}`;
   logger.info(

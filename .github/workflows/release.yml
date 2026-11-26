@@ -1,4 +1,4 @@
-name: Portable package
+name: Windows installer package
 
 on:
   workflow_dispatch:
@@ -27,21 +27,21 @@ jobs:
       - name: Verify
         run: pnpm verify
 
-      - name: Build portable external package
+      - name: Build Windows installer package
         shell: pwsh
         run: |
-          ./scripts/release/package-external.ps1 -OutputDir release-portable
+          ./scripts/release/package-external.ps1 -OutputDir release-setup
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          $zip = "lodestar-portable-$version-windows-x64.zip"
-          Compress-Archive -Path release-portable/* -DestinationPath $zip
+          $zip = "lodestar-setup-$version-windows-x64.zip"
+          Compress-Archive -Path release-setup/* -DestinationPath $zip
           $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
           Set-Content -Path SHA256SUMS.txt -Value "$hash  $zip" -Encoding ASCII
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: lodestar-portable-windows
+          name: lodestar-setup-windows
           path: |
-            lodestar-portable-*.zip
+            lodestar-setup-*.zip
             SHA256SUMS.txt
           if-no-files-found: error

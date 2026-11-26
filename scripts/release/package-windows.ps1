@@ -31,7 +31,7 @@ try {
     & pnpm build
     if ($LASTEXITCODE -ne 0) { throw "pnpm build failed" }
 
-    Write-Host "Bundling portable demo..."
+    Write-Host "Bundling demo package..."
     $bundle = Join-Path $stage "lodestar-demo.cjs"
     & pnpm exec esbuild scripts/dev-mock.mjs --bundle --platform=node --format=cjs `
         --target=node22 "--outfile=$bundle" --log-level=warning `

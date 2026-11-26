@@ -43,7 +43,7 @@
 
 ## 2. 硬结论：本项目的价值不是功能数量
 
-**本项目价值 = SendGuard + 独立探针 + outbox + 可观测 + 部署。**
+**本项目价值 = 附着真实 QQ + SendGuard + outbox + 本地面板。**
 
 - 不是“功能对标 LuckyLilliaBot”；
 - 不是“再做一个 LLOneBot”；
@@ -62,7 +62,7 @@ LuckyLilliaBot 仍在维护（v8.3.2，GPL-2.0），功能面更全。Lodestar �
 - 白名单/@ 触发/日配额/最小间隔/静默时段/STOP；
 - 持久化配额（重启不重置）；
 - 审计日志（只记元数据，不记正文）；
-- 风控信号熔断（探针 DEGRADED/OFFLINE、连续发送失败、安全提示）；
+- 风控信号熔断（连续发送失败、安全提示）；
 - 探针/health/metrics 与发送决策联动；
 - 低量观察 runbook、每日记录模板、立即停止条件；
 - 版本锁定与回滚流程。
@@ -100,7 +100,7 @@ S1 的成功标准不是“功能更多”，而是：**默认拒绝、可审计
 | 项 | 记录方式 |
 | --- | --- |
 | 在线时长/掉线次数 | QQ 进程 + 登录状态 + 探针 |
-| 探针状态 | ONLINE/IDLE/DEGRADED/OFFLINE 时间线 |
+| 运行状态 | ONLINE/OFFLINE/UNKNOWN 时间线 |
 | `nt_1` 附着 | 成功/失败次数、失败原因 |
 | 事件 schema | 每天计算一次消息字段指纹（键集合哈希），与 D0 对比 |
 | 收发计数 | 发送/接收成功、失败、重试 |
@@ -169,7 +169,7 @@ loader 的 WS 只允许 Core 连接（localhost + token），不直接暴露给 
 
 ### 5.4 熔断
 
-- 触发：探针 DEGRADED/OFFLINE、连续发送失败、适配器断开、安全信号；
+- 触发：连续发送失败、适配器断开、安全信号；
 - 状态：CLOSED → OPEN → HALF_OPEN；
 - OPEN 时拒绝所有发送，保留接收；
 - 只能人工 reset，自动恢复需单独 ADR；
@@ -178,7 +178,6 @@ loader 的 WS 只允许 Core 连接（localhost + token），不直接暴露给 
 ### 5.5 集成点
 
 - Core 的 OneBot action router：所有 send 动作先过 SendGuard；
-- Probe：发送前读取健康状态；
 - `/metrics`：允许/拒绝/熔断/配额；
 - `/readyz`：SendGuard OPEN 时仍可 ready（接收正常），但发送指标告警；
 - 配置：`config/send-guard.json`，默认最保守。
@@ -189,7 +188,6 @@ loader 的 WS 只允许 Core 连接（localhost + token），不直接暴露给 
 - 白名单测试群 + @ 触发 + 日配额 20 + 最小间隔 2s 生效；
 - 配额跨重启保持；
 - `data/STOP` ≤5s 生效；
-- 探针 DEGRADED 时熔断；
 - 审计无正文；
 - 单元/集成/混沌测试通过（mock adapter，不需要改 QQ）。
 

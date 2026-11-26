@@ -54,15 +54,9 @@ function createRuntime() {
       sessionId: 'session-1',
       pendingEvents: 0,
       replayableEvents: 0,
-      probe: {
+      health: {
         state: 'ONLINE',
         loginState: 'LOGGED_IN',
-        actionFailures: 0,
-        lastActionOkAt: NOW,
-        lastInboundAt: NOW,
-        inboundCursor: 1,
-        lastCursorChangeAt: NOW,
-        lastNonce: null,
       },
       sendGuard: guard.snapshot(),
     }),

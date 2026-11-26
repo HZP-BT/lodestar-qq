@@ -119,9 +119,9 @@ export interface AdapterHealth {
   process: 'starting' | 'ready' | 'stopped';
   /** Adapter-confirmed login state; Core never infers this from the socket. */
   loginState: 'UNKNOWN' | 'LOGGED_IN' | 'LOGGED_OUT';
-  /** 数据面健康是 hint，Core 的独立探针才是最终判定。 */
+  /** 数据面状态只作为展示信息，Core 不据此做健康判定。 */
   dataPlane: 'unknown' | 'healthy' | 'silent' | 'dead';
-  /** 客户端收到的原始入站计数/序列，先于过滤；用于入站面探针。 */
+  /** 客户端收到的原始入站计数/序列，先于过滤；仅作展示/诊断。 */
   inboundCursor?: number;
   lastInboundAt?: number;
   /** 过滤前看到的 canary nonce（若有）；用于白名单不影响入站面证明。 */
@@ -346,24 +346,27 @@ CREATE INDEX event_outbox_cleanup ON event_outbox(status, sent_at);
   - `ok: false` → `1500`，除非是已知的 Core 层错误（超时 1501、不可用 1502、背压 1503、限流 1504、版本 1505、鉴权 1506、消息不存在 1507）。
 - 未知 action → `1404 ACTION_NOT_FOUND`。
 
-## 8. 健康与探针
+## 8. 健康与运行状态
 
-三条轴分离（详见 ADR 0004）：
+运行状态没有独立探针（见 [ADR 0008](../adr/0008-remove-probe.md)），只有两轴：
 
-- `loginState`：adapter 确认的登录态，只决定 heartbeat `status.online`。
+- `loginState`：adapter 确认的登录态（`UNKNOWN` / `LOGGED_IN` / `LOGGED_OUT`）；
 - `connState`：Core 的 WebSocket 状态（含 `auth_failed` / `handshake_failed`）。
-- `healthState`：独立 probe 的 `UNKNOWN/ONLINE/IDLE/DEGRADED/OFFLINE`，只决定 `status.good`（ONLINE/IDLE 为 true）。
-- `loginState` 来源：外部 OneBot 后端由 Core 连接后调 `get_login_info`（非零 user_id → LOGGED_IN）；原生注入后端由 adapter 显式上报；冷启动到首个 `online:true` heartbeat ≤5s。
 
-探针目标：
+`healthState` 是推导值，取值只有三态：
 
-- **动作面**：`get_login_info` 每 15s 一次，5s 超时；nonce 只放 `echo`，不进 params；只证明动作可用，不能单独判 ONLINE。
-- **入站面**：adapter 暴露 `inboundCursor` / `lastInboundAt` / `inboundNonceSeen` / `eventSeq` / `lastEventAt`；活跃会话下 cursor 60s 不前进，且动作探针超过 60s 未成功 → DEGRADED，120s → OFFLINE。动作探针持续成功时，入站静默不单独触发降级。
-- **主动 canary**（推荐 72h 测试）：独立 canary 账号向测试群发 nonce；probe 从**过滤前**的 `inboundCursor`/`inboundNonceSeen` 确认，而不是从 AstrBot 事件流确认。即使群白名单不包含 canary 群，仍能证明入站面健康。默认关闭，开启时 15 分钟一次。
-- **IDLE**：动作面健康、连续 ≥10 分钟无入站 → IDLE；`good:true`、`/readyz` 200、单指标 `polaris_health_state{state="IDLE"}`。深夜零消息不得变成 DEGRADED/OFFLINE。
-- ONLINE 表示动作面持续健康；DEGRADED/OFFLINE 需要动作面失败，或动作探针失效后仍出现入站停滞证据。
-- `AdapterHealth.dataPlane` 只是佐证；Core 不单独信任。
-- 探针超时/失败不直接等于“重启”，先进入 SUSPECT/DEGRADED，按恢复阶梯处理。
+| 条件 | healthState |
+| --- | --- |
+| WS 未连接 | `OFFLINE` |
+| WS 打开，`loginState !== LOGGED_IN`（或 `health()` 读取失败） | `UNKNOWN` |
+| WS 打开且 `loginState === LOGGED_IN` | `ONLINE` |
+
+- Core 每 5s 读取一次 `adapter.health()` 刷新 `loginState`，不发送任何动作。
+- heartbeat：`status.online = status.good = (connState=open && loginState=LOGGED_IN)`。
+- `/readyz` 仅在 `connState=open`、`login=LOGGED_IN`、`health=ONLINE` 时 200；
+  `/healthz` 只表示进程存活。
+- adapter 仍可上报 `dataPlane` / `inboundCursor` / `lastInboundAt` 等字段，面板会展示，
+  但 Core 不据此改变健康判定。
 
 ## 9. adapter-mock 的约束
 

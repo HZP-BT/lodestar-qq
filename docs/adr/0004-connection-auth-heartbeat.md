@@ -4,6 +4,12 @@
 - 日期：2026-11-11
 - 决策者：项目所有者、维护者
 
+> 注（2026-11-26）：本 ADR 中 `healthState` 的五态与探针部分已被
+> [ADR 0008](0008-remove-probe.md) 取代。现在的 `healthState` 只有
+> `UNKNOWN / ONLINE / OFFLINE`，由连接和 adapter 登录态推导；
+> `heartbeat.status.online` 与 `good` 同时要求连接打开且 `LOGGED_IN`。
+> 本文其余关于连接、鉴权、重连与 heartbeat 传输层的决策仍然有效。
+
 ## 三条状态轴
 
 之前把 `AUTH_FAILED` 放进 `HealthState`，导致探针域与连接域重叠，heartbeat 的 `online` 也被链路/数据面污染。现拆成三轴：

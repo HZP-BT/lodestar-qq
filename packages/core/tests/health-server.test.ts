@@ -17,15 +17,9 @@ function status(overrides: Partial<CoreRuntimeStatus> = {}): CoreRuntimeStatus {
     sessionId: 's1',
     pendingEvents: 0,
     replayableEvents: 0,
-    probe: {
-      state: 'IDLE',
+    health: {
+      state: 'ONLINE',
       loginState: 'LOGGED_IN',
-      actionFailures: 0,
-      lastActionOkAt: 1,
-      lastInboundAt: 0,
-      inboundCursor: 0,
-      lastCursorChangeAt: 0,
-      lastNonce: null,
     },
     sendGuard: {
       circuit: 'CLOSED',
@@ -52,18 +46,18 @@ describe('HealthServer', () => {
     const ready = await fetch(`${server.url}/readyz`);
     expect(ready.status).toBe(200);
 
-    current = status({ probe: { ...status().probe, state: 'DEGRADED' } });
-    const degraded = await fetch(`${server.url}/readyz`);
-    expect(degraded.status).toBe(503);
-    expect(await degraded.json()).toMatchObject({
+    current = status({ health: { state: 'OFFLINE', loginState: 'LOGGED_IN' } });
+    const offline = await fetch(`${server.url}/readyz`);
+    expect(offline.status).toBe(503);
+    expect(await offline.json()).toMatchObject({
       status: 'not_ready',
-      state: { health: 'DEGRADED' },
+      state: { health: 'OFFLINE' },
     });
 
     const metrics = await fetch(`${server.url}/metrics`);
     const text = await metrics.text();
     expect(metrics.status).toBe(200);
-    expect(text).toContain('polaris_health_state{state="DEGRADED"} 1');
+    expect(text).toContain('polaris_health_state{state="OFFLINE"} 1');
     expect(text).toContain('polaris_ready 0');
     expect(text).toContain('polaris_send_guard_circuit{state="CLOSED"} 1');
   });
@@ -71,7 +65,7 @@ describe('HealthServer', () => {
   it('keeps healthz 200 on auth_failed while readyz is 503', async () => {
     const current = status({
       clientState: 'auth_failed',
-      probe: { ...status().probe, state: 'OFFLINE', loginState: 'UNKNOWN' },
+      health: { state: 'OFFLINE', loginState: 'UNKNOWN' },
     });
     const server = new HealthServer({ getStatus: () => current, host: '127.0.0.1', port: 0 });
     servers.push(server);

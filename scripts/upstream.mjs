@@ -61,7 +61,6 @@ function createRuntime(nextConfig) {
       ...guardFile,
       stopFile: guardFile.stopFile ?? nextConfig.sendGuard?.stopFile ?? 'data/STOP',
     },
-    enableWatchdog: true,
     logger,
   });
 }

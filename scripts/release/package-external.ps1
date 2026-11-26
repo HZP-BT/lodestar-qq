@@ -46,7 +46,7 @@ Copy-Item -LiteralPath (Join-Path $root "config\upstream.example.json") -Destina
 Copy-Item -LiteralPath (Join-Path $root "config\send-guard.example.json") -Destination (Join-Path $out "config") -Force
 Copy-Item -Path (Join-Path $root "spike\ntqq-loader\*") -Destination (Join-Path $out "spike\ntqq-loader") -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $root "scripts\windows\bootstrap-external.ps1") -Destination (Join-Path $out "bootstrap-external.ps1") -Force
-Copy-Item -LiteralPath (Join-Path $root "docs\portable-quickstart.md") -Destination (Join-Path $out "README.md") -Force
+Copy-Item -LiteralPath (Join-Path $root "docs\quickstart.md") -Destination (Join-Path $out "README.md") -Force
 
 $wsRoot = Get-ChildItem -LiteralPath (Join-Path $root "node_modules\.pnpm") -Directory -Filter "ws@*" |
     Select-Object -First 1
@@ -129,7 +129,7 @@ pause
 Set-Content -Path (Join-Path $out "Lodestar-Setup.cmd") -Value $launcher -Encoding ASCII
 
 $start = @'
-Lodestar 便携版（Windows x64）
+Lodestar（Windows x64）安装包
 
 1. 确认已安装 QQ 9.9.37-54395 和 AstrBot（安装器会自动查找目录）。
 2. 双击 Lodestar-Setup.cmd。
@@ -143,7 +143,7 @@ Set-Content -Path (Join-Path $out "START-HERE.txt") -Value $start -Encoding UTF8
 Copy-Item -LiteralPath (Join-Path $root "LICENSE") -Destination $out -Force
 
 Write-Host ""
-Write-Host "Portable external package ready:"
+Write-Host "Installer package ready:"
 Write-Host "  $out"
 Write-Host "  node.exe: $(Test-Path (Join-Path $out 'node.exe'))"
 Write-Host "  bundle:   $(Test-Path (Join-Path $out 'lodestar-external.cjs'))"

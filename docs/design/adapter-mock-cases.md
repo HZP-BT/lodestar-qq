@@ -5,6 +5,9 @@
 - 依赖：[AdapterInterface 与上行事件契约](adapter-interface.md)
 - 说明：本文只定义用例与验收断言，不包含实现代码。确认后再写 `@lodestar/adapter-mock`。
 
+> 注（2026-11-26）：C 组探针用例（MOCK-11 / MOCK-12）与 MOCK-14 watchdog 已随
+> [ADR 0008](../adr/0008-remove-probe.md) 移除独立探针而废弃；本文保留其余用例作为历史设计记录。
+
 ## 0. 控制面约定
 
 mock 对外提供脚本化控制命令（具体传输在实现时定，HTTP/stdio 均可）：
@@ -250,10 +253,10 @@ mock 对外提供脚本化控制命令（具体传输在实现时定，HTTP/stdi
 | MOCK-08 长时间离线 | Core 侧已完成 | 100 条消息重放测试 |
 | MOCK-09 背压/STOP | Core 侧已完成 | `event-sink.test.ts`、`send-guard.test.ts` |
 | MOCK-10 鉴权失败 | Core 侧已完成 | `reverse-ws-client.test.ts` |
-| MOCK-11 数据面停摆 | Probe 状态机已完成 | `probe.test.ts` |
-| MOCK-12 只断事件/canary | Probe 状态机已完成 | `probe.test.ts` |
+| MOCK-11 数据面停摆 | 已废弃（ADR 0008 移除探针） | — |
+| MOCK-12 只断事件/canary | 已废弃（ADR 0008 移除探针） | — |
 | MOCK-13 deliverSeq/去重 | Core 侧已完成 | `event-sink.test.ts`、`outbox-dispatcher.test.ts` |
-| MOCK-14 Core 卡死 watchdog | 已完成 | `watchdog.test.ts`：worker 监控 heartbeat，阻塞主线程时 SIGKILL |
+| MOCK-14 Core 卡死 watchdog | 已废弃（ADR 0008 移除 Watchdog） | — |
 
 `@lodestar/adapter-mock` 包已实现 MockAdapter（emit/freeze/freezeEvents/crash/canary/authFail/slowAction/动作桩）与 HTTP 控制面（`MockControlServer`），并有单元测试；`CoreRuntime` 的 E2E 测试覆盖“控制面 emit → Core → AstrBot mock”和 freeze/resume。尚未做的是独立 OS 进程的真实 adapter（mock 与 Core 在同一测试进程内）。
 

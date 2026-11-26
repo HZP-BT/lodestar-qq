@@ -78,7 +78,7 @@ AstrBot action
   - `start_period: 60s`
   - `retries: 3`
 - `restart: unless-stopped` 只处理容器退出，**healthcheck 只把容器标为 unhealthy，不触发自动重启**。
-- DEGRADED 时 `/readyz` 503，但容器不会被重启；这是有意的：重启真实 QQ 进程会丢登录态、可能触发扫码/风控，代价远大于等待恢复。
+- 离线时 `/readyz` 503，但容器不会被重启；这是有意的：重启真实 QQ 进程会丢登录态、可能触发扫码/风控，代价远大于等待恢复。
 - 若未来要“unhealthy 自动重启”，必须先写 ADR，说明对 QQ 进程/登录态的影响，并默认关闭。
 
 ## 可观测字段
@@ -121,9 +121,9 @@ SendGuard 从 spike 的内存计数器升级为产品化单点：
   loader/上游 adapter 不直接暴露给 AstrBot。
 - **持久化**：SQLite `send_quota`、`send_rate`、`send_circuit`、`send_audit`；
   日配额和速率跨重启保持。
-- **决策顺序**：STOP → circuit OPEN → 探针 DEGRADED/OFFLINE → 白名单 →
+- **决策顺序**：STOP → circuit OPEN → 白名单 →
   @ 触发 → 静默时段 → 日配额/群配额 → 最小间隔 → 重复内容 → 允许。
-- **熔断**：探针 DEGRADED/OFFLINE、连续发送失败达到阈值、显式安全信号都会
+- **熔断**：连续发送失败达到阈值、显式安全信号都会
   打开 circuit；OPEN 时拒绝发送但保留接收；只允许人工 `resetCircuit()`。
 - **审计**：只写元数据（account、action、target、decision、reason、消息哈希/长度、
   retcode、时间），不写正文；默认保留 30 天。

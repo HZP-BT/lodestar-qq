@@ -262,7 +262,7 @@ describe('ReverseWsClient', () => {
       meta_event_type: 'heartbeat',
       self_id: 10001,
       interval: 100,
-      status: { online: true, good: false },
+      status: { online: true, good: true },
     });
     expect(isRecord(heartbeat) && Object.hasOwn(heartbeat, 'polaris_state')).toBe(false);
   });
@@ -291,82 +291,14 @@ describe('ReverseWsClient', () => {
     });
   });
 
-  it('derives heartbeat status from the probe health provider', async () => {
-    const server = await createTestServer();
-    servers.push(server);
-
-    let health: 'ONLINE' | 'IDLE' | 'DEGRADED' | 'OFFLINE' = 'ONLINE';
-    const client = makeClient(server, {
-      heartbeat: { enabled: true, intervalMs: 50, requirePong: false },
-      healthProvider: () => health,
-    });
-    client.start();
-
-    const online = await server.waitForMessage(
-      (message) => isRecord(message) && isRecord(message.status) && message.status.good === true,
-      2_000,
-    );
-    expect(online).toMatchObject({ status: { online: true, good: true } });
-
-    const afterOnline = server.messages.length;
-    health = 'DEGRADED';
-    await waitFor(
-      () =>
-        server.messages
-          .slice(afterOnline)
-          .some(
-            (message) =>
-              isRecord(message) &&
-              isRecord(message.status) &&
-              message.status.online === true &&
-              message.status.good === false,
-          ),
-      2_000,
-    );
-
-    const afterDegraded = server.messages.length;
-    health = 'OFFLINE';
-    await waitFor(
-      () =>
-        server.messages
-          .slice(afterDegraded)
-          .some(
-            (message) =>
-              isRecord(message) &&
-              isRecord(message.status) &&
-              message.status.online === true &&
-              message.status.good === false,
-          ),
-      2_000,
-    );
-
-    const afterOffline = server.messages.length;
-    health = 'IDLE';
-    await waitFor(
-      () =>
-        server.messages
-          .slice(afterOffline)
-          .some(
-            (message) =>
-              isRecord(message) &&
-              isRecord(message.status) &&
-              message.status.online === true &&
-              message.status.good === true,
-          ),
-      2_000,
-    );
-  });
-
-  it('never lets the probe change status.online; login state owns it', async () => {
+  it('follows the adapter-confirmed login state for heartbeat online/good', async () => {
     const server = await createTestServer();
     servers.push(server);
 
     let login: 'LOGGED_IN' | 'LOGGED_OUT' = 'LOGGED_IN';
-    let health: 'ONLINE' | 'OFFLINE' = 'ONLINE';
     const client = makeClient(server, {
       heartbeat: { enabled: true, intervalMs: 50, requirePong: false },
       loginProvider: () => login,
-      healthProvider: () => health,
     });
     client.start();
 
@@ -388,22 +320,6 @@ describe('ReverseWsClient', () => {
       () =>
         server.messages
           .slice(beforeLogout)
-          .some(
-            (message) =>
-              isRecord(message) &&
-              isRecord(message.status) &&
-              message.status.online === false &&
-              message.status.good === true,
-          ),
-      2_000,
-    );
-
-    const beforeOffline = server.messages.length;
-    health = 'OFFLINE';
-    await waitFor(
-      () =>
-        server.messages
-          .slice(beforeOffline)
           .some(
             (message) =>
               isRecord(message) &&

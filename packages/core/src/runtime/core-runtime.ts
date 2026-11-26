@@ -4,14 +4,11 @@ import { dirname } from 'node:path';
 
 import { AdapterActionError } from '../adapter/action-error.js';
 import { EventSinkImpl } from '../adapter/event-sink.js';
-import type { AdapterActionResult, AdapterInterface } from '../adapter/types.js';
+import type { AdapterActionResult, AdapterInterface, AdapterLoginState } from '../adapter/types.js';
 import type { Logger } from '../logger.js';
 import { nullLogger } from '../logger.js';
 import { ReverseWsClient } from '../onebot/reverse-ws-client.js';
 import type { ReverseWsClientOptions } from '../onebot/reverse-ws-client.js';
-import { Probe } from '../probe/probe.js';
-import type { ProbeConfig } from '../probe/probe.js';
-import { Watchdog } from '../probe/watchdog.js';
 import { SendGuard } from '../send-guard.js';
 import type { SendGuardConfig } from '../send-guard.js';
 import { openSqliteDatabase } from '../storage/database.js';
@@ -19,18 +16,17 @@ import type { SqliteDatabase } from '../storage/database.js';
 import { EventStore } from '../storage/event-store.js';
 import { OutboxDispatcher } from '../storage/outbox-dispatcher.js';
 import { SendGuardStore } from '../storage/send-guard-store.js';
+import { deriveHealth } from './health.js';
+import type { RuntimeHealth } from './health.js';
 
 export interface CoreRuntimeOptions {
   adapter: AdapterInterface;
-  client: Omit<
-    ReverseWsClientOptions,
-    'selfId' | 'sendGuard' | 'healthProvider' | 'loginProvider' | 'logger'
-  >;
+  client: Omit<ReverseWsClientOptions, 'selfId' | 'sendGuard' | 'loginProvider' | 'logger'>;
   databasePath?: string;
   sendGuard?: Partial<SendGuardConfig>;
   logger?: Logger;
-  probe?: Partial<ProbeConfig>;
-  enableWatchdog?: boolean;
+  /** How often the adapter's reported login state is refreshed. */
+  statusIntervalMs?: number;
   replayManifest?: string[];
 }
 
@@ -40,7 +36,7 @@ export interface CoreRuntimeStatus {
   sessionId: string;
   pendingEvents: number;
   replayableEvents: number;
-  probe: ReturnType<Probe['snapshot']>;
+  health: RuntimeHealth;
   sendGuard: ReturnType<SendGuard['snapshot']>;
 }
 
@@ -50,7 +46,6 @@ export interface CoreRuntimeStatus {
  */
 export class CoreRuntime {
   readonly adapter: AdapterInterface;
-  readonly probe: Probe;
   readonly guard: SendGuard;
 
   private readonly options: CoreRuntimeOptions;
@@ -60,7 +55,8 @@ export class CoreRuntime {
   private store: EventStore | null = null;
   private sendGuardStore: SendGuardStore | null = null;
   private client: ReverseWsClient | null = null;
-  private watchdog: Watchdog | null = null;
+  private statusTimer: NodeJS.Timeout | null = null;
+  private loginState: AdapterLoginState = 'UNKNOWN';
   private started = false;
 
   constructor(options: CoreRuntimeOptions) {
@@ -68,7 +64,6 @@ export class CoreRuntime {
     this.adapter = options.adapter;
     this.logger = options.logger ?? nullLogger;
     this.sessionId = randomUUID();
-    this.probe = new Probe(options.probe, { now: Date.now });
     this.guard = new SendGuard(options.sendGuard, { now: Date.now });
   }
 
@@ -90,7 +85,6 @@ export class CoreRuntime {
     const guardStore = new SendGuardStore(db);
     this.sendGuardStore = guardStore;
     this.guard.attachStorage(guardStore);
-    this.guard.setHealthProvider(() => this.probe.healthState);
     this.guard.startStopWatchdog();
 
     const client = new ReverseWsClient({
@@ -98,8 +92,7 @@ export class CoreRuntime {
       selfId: this.adapter.accountId,
       logger: this.logger,
       sendGuard: this.guard,
-      healthProvider: () => this.probe.healthState,
-      loginProvider: () => this.probe.adapterLoginState,
+      loginProvider: () => this.loginState,
     });
     this.client = client;
 
@@ -170,14 +163,14 @@ export class CoreRuntime {
       this.options.replayManifest ?? [],
     );
 
-    await this.probe.probeOnce(this.adapter);
-    this.probe.start(this.adapter);
-    client.start();
+    await this.refreshAdapterStatus();
+    const statusIntervalMs = this.options.statusIntervalMs ?? 5_000;
+    this.statusTimer = setInterval(() => {
+      void this.refreshAdapterStatus();
+    }, statusIntervalMs);
+    this.statusTimer.unref?.();
 
-    if (this.options.enableWatchdog) {
-      this.watchdog = new Watchdog();
-      this.watchdog.startAutoBeat();
-    }
+    client.start();
 
     this.started = true;
     this.logger.info(
@@ -191,9 +184,11 @@ export class CoreRuntime {
       return;
     }
 
-    this.probe.stop();
+    if (this.statusTimer) {
+      clearInterval(this.statusTimer);
+      this.statusTimer = null;
+    }
     this.guard.stop();
-    this.watchdog?.stop();
     await this.adapter.stop();
     await this.client?.stop();
     this.db?.close();
@@ -207,8 +202,18 @@ export class CoreRuntime {
       sessionId: this.sessionId,
       pendingEvents: this.store?.pendingCount(this.adapter.accountId) ?? 0,
       replayableEvents: this.store?.listReplayable(this.adapter.accountId).length ?? 0,
-      probe: this.probe.snapshot(),
+      health: this.health,
       sendGuard: this.guard.snapshot(),
+    };
+  }
+
+  get health(): RuntimeHealth {
+    if (!this.client) {
+      return { state: 'UNKNOWN', loginState: this.loginState };
+    }
+    return {
+      state: deriveHealth(this.client.isOpen, this.loginState),
+      loginState: this.loginState,
     };
   }
 
@@ -222,5 +227,15 @@ export class CoreRuntime {
 
   get sendGuardStoreInstance(): SendGuardStore | null {
     return this.sendGuardStore;
+  }
+
+  private async refreshAdapterStatus(): Promise<void> {
+    try {
+      const health = await this.adapter.health();
+      this.loginState = health.loginState;
+    } catch {
+      // The adapter cannot report; do not keep claiming a logged-in account.
+      this.loginState = 'UNKNOWN';
+    }
   }
 }

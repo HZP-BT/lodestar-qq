@@ -32,7 +32,6 @@ export interface SendGuardConfig {
 export type SendBlockReason =
   | 'stop'
   | 'circuit_open'
-  | 'probe_unhealthy'
   | 'security'
   | 'whitelist'
   | 'not_at'
@@ -98,7 +97,6 @@ export interface SendGuardOptions {
   now?: () => number;
   random?: () => number;
   storage?: SendGuardStorage;
-  healthProvider?: () => string;
 }
 
 /**
@@ -113,7 +111,6 @@ export class SendGuard {
   private readonly now: () => number;
   private readonly random: () => number;
   private storage: SendGuardStorage | null;
-  private healthProvider: (() => string) | null;
   private stopTimer: NodeJS.Timeout | null = null;
   private stopDisabled = false;
   private circuit: SendCircuitState = 'CLOSED';
@@ -132,7 +129,6 @@ export class SendGuard {
     this.now = options.now ?? Date.now;
     this.random = options.random ?? Math.random;
     this.storage = options.storage ?? null;
-    this.healthProvider = options.healthProvider ?? null;
     this.refreshStopFlag();
     this.loadCircuit();
     this.pruneAudit();
@@ -142,10 +138,6 @@ export class SendGuard {
     this.storage = storage;
     this.loadCircuit();
     this.pruneAudit();
-  }
-
-  setHealthProvider(provider: (() => string) | null): void {
-    this.healthProvider = provider;
   }
 
   startStopWatchdog(intervalMs = 5_000): void {
@@ -192,19 +184,6 @@ export class SendGuard {
         target,
         message,
         'circuit_open',
-        RETCODE.ADAPTER_UNAVAILABLE,
-      );
-    }
-
-    const health = this.healthProvider?.();
-    if (health === 'DEGRADED' || health === 'OFFLINE') {
-      this.openCircuit(`probe:${health}`);
-      return this.block(
-        action,
-        selfId,
-        target,
-        message,
-        'probe_unhealthy',
         RETCODE.ADAPTER_UNAVAILABLE,
       );
     }

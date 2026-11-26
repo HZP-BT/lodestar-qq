@@ -6,13 +6,13 @@
 > `data/polaris.db` 和 native loader 的 `polaris-loader.js` 文件名仍保留；新配置优先使用
 > `LODESTAR_*`。Core 继续使用 Apache-2.0。
 
-Lodestar 是一个 **Apache-2.0 的 OneBot v11 运行时**，面向“附着真实 NTQQ 客户端 + 工程化保活”的场景。Core 与客户端适配器分离：Core 负责协议、会话、可靠性、独立探针、可观测与 WebUI；适配器可以是外部 OneBot 后端（M1）或原生 NTQQ 注入适配器（M3 spike）。
+Lodestar 是一个 **Apache-2.0 的 OneBot v11 实现**，用来替代 NapCat、SnowLuma 这类 QQ 端后端：直接附着真实 NTQQ 客户端，把 OneBot v11 接口交给 AstrBot（aiocqhttp 反向 WS）。Core 与客户端适配器分离：Core 负责协议、会话、投递与 WebUI；适配器可以是原生 NTQQ loader（默认），也可以是外部 OneBot 上游（迁移/兼容）。
 
 ## 下载与安装（新用户，推荐）
 
-从 [GitHub Releases](../../releases) 下载 `lodestar-portable-0.1.0-m1.2-windows-x64.zip`。
-解压后双击 `Lodestar-Setup.cmd`。包内自带 Node、Core、WebUI 和 QQ loader，
-**不需要安装 Node 或 pnpm**。
+从 [GitHub Releases](../../releases) 下载最新的 Windows 安装包，解压后双击 `Lodestar-Setup.cmd`。
+安装包自带 Node、Core、WebUI 和 QQ loader，**不需要安装 Node 或 pnpm**；一次双击会完成
+环境安装、QQ 补丁/loader 安装和启动。
 
 前置条件：
 
@@ -22,8 +22,9 @@ Lodestar 是一个 **Apache-2.0 的 OneBot v11 运行时**，面向“附着真�
 - 管理员权限（首次打补丁/安装 loader 需要 UAC）；
 - 只使用测试号。
 
+首次运行需要在 QQ 窗口登录测试号（脚本会提示并等待）；之后再次双击就是纯启动。
 完整步骤、SendGuard 默认值、群/私聊配置、故障排查和回滚见
-[便携版新用户指南](docs/portable-quickstart.md)。
+[安装与启动指南](docs/quickstart.md)。
 
 > 注入/补丁路线属于第三方方案，与腾讯/QQ 无隶属或授权关系；它只能降低、不能归零
 > 账号被风控、踢下线或封禁的风险。请只使用测试号，并自行承担风险。
@@ -34,9 +35,11 @@ Lodestar 是一个 **Apache-2.0 的 OneBot v11 运行时**，面向“附着真�
 
 ## 为什么做 Lodestar
 
-- NapCat 无头版频繁掉线、账号被封；SnowLuma 转为私有 不再公开。
-- 现有方案的保活边界通常在“进程内 Hook”：进程和 WebSocket 都活着，但数据面已经停止。Lodestar 用**独立探针**从外部验证数据面，而不是依赖 `status.good`。
-- 许可证：Core 使用 Apache-2.0；不打包 SnowLuma、NapCat 等限制性许可证代码。可选注入后端放在独立包/独立仓库，按各自许可证分发。
+- NapCat 无头版频繁掉线、账号被封；SnowLuma 转为私有不再公开。
+- Lodestar 不做“又一层运行时平台”，只做一件事：附着真实 NTQQ，把 OneBot v11 接口给
+  AstrBot，装上就能用。
+- 许可证：Core 使用 Apache-2.0；不打包 SnowLuma、NapCat 等限制性许可证代码。loader/patcher
+  为自研代码，按 Apache-2.0 分发。
 
 ## 架构（M1.2 A 组第一步）
 
@@ -48,18 +51,17 @@ AstrBot ── reverse WS (6199/ws, Bearer token) ──►  @lodestar/core
                                                    ├─ EventSink.publish（拒绝 meta、去重、outbox）
                                                    ├─ EventStore（node:sqlite：dedup/outbox/message_ref）
                                                    ├─ OutboxDispatcher（按 deliverSeq 重放）
-                                                   ├─ Probe（ONLINE/IDLE/DEGRADED/OFFLINE）
-                                                   ├─ Watchdog（独立 worker，阻塞时 SIGKILL）
+                                                   ├─ 运行状态（连接 + 适配器登录态 → ONLINE/OFFLINE）
                                                    ├─ 心跳、指数退避重连、并发上限
                                                    └─ 结构化日志（pino）
 ```
 
-`SendGuard` 与 `EventSink` 都在 Core，与外部 OneBot 后端或原生注入后端无关。后续里程碑加入 `@lodestar/adapter-mock`、`@lodestar/probe`、Docker Compose 与 WebUI。架构决策见 ADR 0001–0007。
+`SendGuard` 与 `EventSink` 都在 Core，与外部 OneBot 后端或原生注入后端无关。`@lodestar/adapter-mock` 用于本地演示，Docker Compose 与 WebUI 提供可观测入口。
 
 - [ADR 0001：后端范围与官方 Bot API 的否决](docs/adr/0001-backend-scope.md)
 - [ADR 0002：Core 与适配器的许可证边界](docs/adr/0002-license-boundary.md)
 
-> 如果你拿到的是 `lodestar-portable-*-windows-x64.zip`，请直接按上面的
+> 如果你拿到的是 Release 里的安装包 zip，请直接按上面的
 > [下载与安装](#下载与安装新用户推荐)操作；下面的 `pnpm install` / `pnpm demo` 是
 > 源码开发与 mock 演示路径。
 
@@ -140,7 +142,7 @@ AstrBot 侧：新建 `OneBot v11` 机器人，反向 WS 主机 `0.0.0.0`、端�
   - `408` / `429` / `5xx` / 网络错误 → 正常指数退避重连。
 - 进入 `auth_failed` / `handshake_failed` 后不会自动重试，避免刷爆对端。日志包含 `statusCode`、脱敏后的 URL、是否配置 token、修复提示。
 - 修复配置后：进程内可 `setAccessToken()` 后调用 `resume()`；当前 CLI 直接改环境变量并重启。`resume()` 会先关闭旧连接再发起一次新连接，避免双连。
-- `/healthz` 是 **liveness**：进程活着就 200（包括 DEGRADED / auth_failed），body 里带三轴状态；`/readyz` 是 **readiness**：只有 conn=open、login=LOGGED_IN、health∈{ONLINE,IDLE} 才 200，DEGRADED / OFFLINE / auth_failed 都 503。DEGRADED 用 `polaris_health_state{state="DEGRADED"}` 告警，不要依赖 healthz 状态码。实现随 M1.4 落地，契约见 [ADR 0004](docs/adr/0004-connection-auth-heartbeat.md)。
+- `/healthz` 是 **liveness**：进程活着就 200（包括 auth_failed / 离线）；`/readyz` 是 **readiness**：只有 conn=open、login=LOGGED_IN 且 health=ONLINE 才 200。健康状态没有独立探针，只由 OneBot 连接和适配器上报的登录态推导（`UNKNOWN` / `ONLINE` / `OFFLINE`）；契约见 [ADR 0008](docs/adr/0008-remove-probe.md)。
 - 多账号：每个账号一个 `ReverseWsClient`，各自带 `X-Self-ID`。AstrBot 侧建议每个账号一个 OneBot v11 机器人条目，并使用独立反向 WS 端口，避免 `self_id` 路由歧义。M1 先单账号。
 
 ## 错误码与重试语义
@@ -217,11 +219,11 @@ curl -X POST http://127.0.0.1:18090/emit -H "Content-Type: application/json" -d 
 
 容器内 AdminServer 通过 `LODESTAR_ADMIN_ALLOW_NON_LOOPBACK=1` 绑定容器网络；Compose 只把 `18081` 发布到宿主机 `127.0.0.1`。不要把该端口改成 `0.0.0.0` 或暴露到公网。当前开发机未安装 Docker，Compose 未在本机实机复验；本地 mock 演示以 `pnpm demo` 为准。
 
-`healthcheck` 使用 `/readyz`：`interval: 30s`、`timeout: 5s`、`start_period: 60s`、`retries: 3`；`restart: unless-stopped` 只处理进程退出，**healthcheck unhealthy 不会自动重启容器**。DEGRADED 由 `/readyz` 503 + `polaris_health_state` 指标告警，不靠 healthz 状态码。
+`healthcheck` 使用 `/readyz`：`interval: 30s`、`timeout: 5s`、`start_period: 60s`、`retries: 3`；`restart: unless-stopped` 只处理进程退出，**healthcheck unhealthy 不会自动重启容器**。就绪与否由 `/readyz` 和 `polaris_health_state` 指标反映。
 
-## Windows 便携版与源码流程
+## Windows 安装（源码流程）
 
-新用户请直接使用上面 Releases 里的便携包；本节是源码开发流程，需要 Node/pnpm。
+新用户请直接使用上面 Releases 里的安装包；本节是源码开发流程，需要 Node/pnpm。
 
 源码前置：Windows x64、Node 22.16+、pnpm 10；先在仓库根目录运行 `pnpm install`。
 QQ `9.9.37-54395` 已安装（默认 `D:\qq`）；AstrBot 已安装（默认 `D:\AstrBot`，
@@ -265,7 +267,7 @@ powershell -ExecutionPolicy Bypass -File scripts\release\package-windows.ps1 -In
 产物在 `release/`：包含 `lodestar-demo.cjs`、WebUI、`Lodestar-Demo.cmd` 和可选
 `node.exe` 的 zip + `SHA256SUMS.txt`。
 
-> 公开 Release 的主下载是 `lodestar-portable-*.zip`（面向新用户，包含本地 loader/patcher）；
+> 公开 Release 的主下载是 Windows 安装包（自带运行时与本地 loader/patcher）；
 > mock 演示包只用于开发/演示。源码仓库不提交 `node_modules`、`dist`、`data`、`logs`
 > 或本地 `config/*.json`。
 
@@ -351,7 +353,7 @@ S0 验证已收束，S0 边界、S1 关键路径和 backlog 见
 
 ## 真实 OneBot 上游（NapCat / SnowLuma）
 
-> **定位说明：这是 M1 的兼容/迁移后端，不是 Lodestar 的最终形态。** Lodestar 的目标后端是原生 NTQQ 注入适配器（M3 spike），直接附着真实 QQ 客户端，不经过 NapCat/SnowLuma/LLOneBot。上游适配器只用于：迁移期验证 Core 的探针/保活/可观测/协议，以及在原生注入 spike 失败时作为降级路径。
+> **定位说明：这是兼容/迁移后端，不是 Lodestar 的默认形态。** Lodestar 的默认后端是原生 NTQQ loader，直接附着真实 QQ 客户端，不经过 NapCat/SnowLuma/LLOneBot。上游适配器只用于：迁移期验证 Core 的协议与投递，以及在原生 loader 不可用时作为降级路径。
 
 Lodestar 作为网关时，上游需要一个 OneBot v11 WebSocket **服务端**（不是反向 WS 客户端）：
 
@@ -416,9 +418,8 @@ lodestar-qq/
 │  ├─ src/onebot/          # 反向 WS 客户端、动作路由、退避、鉴权
 │  ├─ src/adapter/         # AdapterEvent/PublishResult、EventSink、eventKey、meta 拒收
 │  ├─ src/storage/         # schema、node:sqlite driver、EventStore、OutboxDispatcher、运行期探测
-│  ├─ src/probe/           # 健康状态机 + 独立 worker Watchdog
 │  ├─ src/observability/   # /healthz /readyz /metrics
-│  ├─ src/runtime/         # CoreRuntime：Adapter→EventSink→Outbox→ReverseWsClient
+│  ├─ src/runtime/         # CoreRuntime：Adapter→EventSink→Outbox→ReverseWsClient；health.ts 运行状态
 │  ├─ src/send-guard.ts    # STOP/白名单/@触发/配额/限频/熔断/审计
 │  ├─ src/admin/           # 本地管理 HTTP API（127.0.0.1 + token）
 │  ├─ src/config.ts        # 配置 schema
@@ -455,7 +456,6 @@ lodestar-qq/
 | 指标 | 设计目标（非承诺） | 实测值 |
 | --- | --- | --- |
 | 冷启动到 AstrBot 适配器连接 | ≤ 60s | 待测 |
-| 静默假死检出（进程活着、数据面停摆） | ≤ 90s | 待 M1.4 |
 | 消息投递成功率 | ≥ 99% | 待 M1.2 |
 | 重复投递率（端到端，AstrBot 侧按 message_id） | ≤ 0.1% | 待 72h 联调 |
 | Core 空闲 RSS（不含 QQ 客户端） | ≤ 150MB | 待测 |
@@ -471,12 +471,12 @@ Lodestar 配套的降风险手段是：
 - **最小频控**：按账号/群/动作限流，默认保守。
 - **行为正常化**：随机延迟、静默时段、重复抑制、群白名单、@ 触发、每日额度。
 - **可一键停用**：发现异常时立即停止发送并保留状态，人工处理后再恢复。
-- **可观测**：断连原因、探针结果、消息成功率、内存曲线都可查。
+- **可观测**：断连原因、连接状态、消息成功率、内存曲线都可查。
 
 **SendGuard（S1-b 产品化）**：默认空群白名单（拒绝所有群发）、私聊开启（白名单空=允许所有私聊，
 填写后仅允许列表）、@ 触发默认关闭、日配额 200、群配额 80、同群最小间隔 2s、静默时段默认关闭、
 重复抑制、`data/STOP` 立即生效；配额/速率/熔断/审计持久化到 SQLite，审计只记元数据不记正文；
-探针 DEGRADED/OFFLINE、连续发送失败或显式安全信号会打开熔断，只允许人工 reset。详见
+连续发送失败或显式安全信号会打开熔断，只允许人工 reset。详见
 [ADR 0007](docs/adr/0007-risk-controls.md)。
 
 **合规性由使用方式兜底，而不是由后端类型兜底。** 请遵守《QQ 用户协议》和当地法律，仅用于个人或小规模合法用途。
@@ -522,7 +522,8 @@ M2 可能用你的主力号做一次 24h 冒烟。必须按最小风险执行：
 - [adapter-mock 用例清单](docs/design/adapter-mock-cases.md)
 - [S0 结案与 S1 边界](docs/design/s0-closure-and-s1-boundary.md)
 - [Web 控制面板设计](docs/design/admin-panel.md)
-- [便携版新用户指南](docs/portable-quickstart.md)
+- [ADR 0008：移除独立探针，健康状态改由连接与登录态推导](docs/adr/0008-remove-probe.md)
+- [安装与启动指南](docs/quickstart.md)
 - [S1-a 14 天低量观察 Runbook](docs/runbooks/s1a-14d-observation.md)
 - [S1 安全限制与测试环境清理](docs/runbooks/s1-safety-and-cleanup.md)
 - [24h 主力号冒烟 Runbook](docs/runbooks/24h-smoke.md)

@@ -12,7 +12,7 @@ interface StatusPayload {
     detail: string | null;
   };
   onebot: { clientState: string };
-  probe: { state: string; loginState: string };
+  health: { state: string; loginState: string };
   sendGuard: {
     circuit: 'CLOSED' | 'OPEN';
     circuitReason: string | null;
@@ -233,27 +233,16 @@ function serviceState(): { label: string; tone: 'ok' | 'warn' | 'bad' } {
   if (isDemoStatus(s)) {
     return { label: '演示模式（Mock）', tone: 'warn' };
   }
-  if (s.probe.state === 'DEGRADED' || s.probe.state === 'OFFLINE') {
+  if (s.health.state === 'OFFLINE') {
     return { label: '后端核心服务未连接', tone: 'bad' };
   }
-  if (
-    s.probe.state === 'UNKNOWN' &&
-    s.loader.loginState === 'LOGGED_IN' &&
-    s.onebot.clientState === 'open'
-  ) {
-    return { label: '核心已连接，等待首条消息', tone: 'warn' };
-  }
-  if (
-    s.loader.loginState === 'LOGGED_IN' &&
-    (s.probe.state === 'ONLINE' || s.probe.state === 'IDLE')
-  ) {
+  if (s.loader.loginState === 'LOGGED_IN' && s.health.state === 'ONLINE') {
     return { label: '登录成功', tone: 'ok' };
   }
-  if (
-    s.loader.dataPlane === 'silent' ||
-    s.onebot.clientState === 'waiting' ||
-    s.onebot.clientState === 'connecting'
-  ) {
+  if (s.loader.loginState === 'LOGGED_IN' && s.onebot.clientState === 'open') {
+    return { label: '核心已连接，状态确认中', tone: 'warn' };
+  }
+  if (s.onebot.clientState === 'waiting' || s.onebot.clientState === 'connecting') {
     return { label: '后端核心服务未连接', tone: 'warn' };
   }
   return { label: '后端核心服务未连接', tone: 'warn' };
@@ -269,18 +258,14 @@ function serviceHint(): string {
   if (isDemoStatus(coreStatus)) {
     return '当前使用内置 Mock 后端，未连接真实 QQ 和 AstrBot；以下状态均为模拟数据。';
   }
-  if (coreStatus.probe.state === 'DEGRADED' || coreStatus.probe.state === 'OFFLINE') {
-    return '没有检测到可用的上游连接。请确认 QQ、loader 和 AstrBot 已启动。';
-  }
-  if (
-    coreStatus.probe.state === 'UNKNOWN' &&
-    coreStatus.loader.loginState === 'LOGGED_IN' &&
-    coreStatus.onebot.clientState === 'open'
-  ) {
-    return '核心与 loader 已连接；收到首条消息后探针会切换为 ONLINE。';
+  if (coreStatus.health.state === 'OFFLINE') {
+    return 'Core 尚未连上 AstrBot 的反向 WebSocket。请确认 QQ、loader 和 AstrBot 已启动，并检查地址和 token。';
   }
   if (coreStatus.loader.dataPlane === 'silent') {
     return 'Loader 进程没有响应。请确认 QQ 已登录，且 loader 仍在运行。';
+  }
+  if (coreStatus.onebot.clientState === 'open' && coreStatus.loader.loginState !== 'LOGGED_IN') {
+    return '已连上 AstrBot，但尚未确认 QQ 登录状态。请在 QQ 窗口完成登录。';
   }
   if (coreStatus.onebot.clientState !== 'open') {
     return 'Core 尚未连上 AstrBot 的反向 WebSocket。请检查地址和 token。';
@@ -453,11 +438,11 @@ function renderOverview(): void {
   const quota = g.quota.account;
   const percent = quota.limit > 0 ? Math.min(100, (quota.used / quota.limit) * 100) : 0;
   const loaderOk = s.loader.dataPlane === 'healthy' || s.loader.process === 'ready';
-  const probeOk = s.probe.state === 'ONLINE' || s.probe.state === 'IDLE';
+  const onlineOk = s.health.state === 'ONLINE';
   const circuitOk = s.sendGuard.circuit === 'CLOSED';
   const service = serviceState();
   const waitingFirstMessage =
-    s.probe.state === 'UNKNOWN' &&
+    s.health.state === 'UNKNOWN' &&
     s.loader.loginState === 'LOGGED_IN' &&
     s.onebot.clientState === 'open';
   const showFirstRun = !onboardingDone();
@@ -508,9 +493,9 @@ function renderOverview(): void {
         <div class="muted small">${demoMode ? '内置 mock AstrBot' : 'AstrBot reverse WS'}</div>
       </section>
       <section class="card span-3">
-        <h2>探针</h2>
-        <div class="metric"><span class="dot ${probeOk ? 'ok' : 'bad'}"></span>${esc(s.probe.state)}</div>
-        <div class="muted small">login ${esc(s.probe.loginState)}</div>
+        <h2>运行状态</h2>
+        <div class="metric"><span class="dot ${onlineOk ? 'ok' : 'bad'}"></span>${esc(s.health.state)}</div>
+        <div class="muted small">login ${esc(s.health.loginState)}</div>
       </section>
       <section class="card span-3">
         <h2>熔断器</h2>
@@ -859,7 +844,7 @@ function renderSendGuard(): void {
     </form>
     <section class="card danger-zone">
       <h2>危险操作</h2>
-      <p class="muted small">急停会写 data/STOP，下一次发送立即返回 1508；恢复会删除 STOP；reset 只在确认上游/探针恢复后使用。三项都需要输入确认词。</p>
+      <p class="muted small">急停会写 data/STOP，下一次发送立即返回 1508；恢复会删除 STOP；reset 只在确认上游恢复后使用。三项都需要输入确认词。</p>
       <div class="row">
         ${guard.stopDisabled ? '<button class="btn" type="button" id="guard-resume">恢复发送</button>' : '<button class="btn btn-danger" type="button" id="guard-stop">急停发送</button>'}
         <button class="btn" type="button" id="guard-reset">人工 reset 熔断</button>
@@ -873,20 +858,14 @@ function renderSendGuard(): void {
   });
 
   document.getElementById('guard-reset')?.addEventListener('click', () => {
-    confirmPhrase(
-      '人工 reset 熔断',
-      '确认探针/上游已恢复后再执行。',
-      'RESET',
-      'Reset',
-      async () => {
-        await api('/api/sendguard/reset', {
-          method: 'POST',
-          body: JSON.stringify({ confirm: 'RESET' }),
-        });
-        await loadCore();
-        toast('熔断已 reset');
-      },
-    );
+    confirmPhrase('人工 reset 熔断', '确认上游已恢复后再执行。', 'RESET', 'Reset', async () => {
+      await api('/api/sendguard/reset', {
+        method: 'POST',
+        body: JSON.stringify({ confirm: 'RESET' }),
+      });
+      await loadCore();
+      toast('熔断已 reset');
+    });
   });
   document.getElementById('guard-stop')?.addEventListener('click', () => {
     confirmPhrase(

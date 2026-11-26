@@ -22,12 +22,8 @@ export type HandshakeFailureKind = 'auth_failed' | 'handshake_failed';
 /** Account login state, confirmed by the adapter; never inferred from the socket. */
 export type LoginState = 'UNKNOWN' | 'LOGGED_IN' | 'LOGGED_OUT';
 
-/** Data-plane health, owned by the independent probe. */
-export type HealthState = 'UNKNOWN' | 'ONLINE' | 'IDLE' | 'DEGRADED' | 'OFFLINE';
-
 export interface HeartbeatStatus {
   loginState: LoginState;
-  healthState: HealthState;
   online: boolean;
   good: boolean;
 }
@@ -71,11 +67,6 @@ export interface ReverseWsClientOptions {
   actionTimeoutMs?: number;
   /** Core-owned send guard; applies to all adapters/backends. */
   sendGuard?: SendGuardLike;
-  /**
-   * Probe-owned health state. Heartbeat status.good is derived from this value;
-   * status.online is derived only from loginProvider.
-   */
-  healthProvider?: () => HealthState;
   /** Adapter-confirmed login state. Defaults to UNKNOWN (online=false). */
   loginProvider?: () => LoginState;
   logger?: Logger;
@@ -157,7 +148,6 @@ export class ReverseWsClient {
   private readonly heartbeat: HeartbeatOptions;
   private readonly maxConcurrentActions: number;
   private readonly actionTimeoutMs: number;
-  private healthProvider: () => HealthState;
   private loginProvider: () => LoginState;
   private readonly logger: Logger;
   private readonly webSocketFactory: (url: string, options: ClientOptions) => WebSocket;
@@ -212,7 +202,6 @@ export class ReverseWsClient {
     };
     this.maxConcurrentActions = options.maxConcurrentActions ?? 8;
     this.actionTimeoutMs = options.actionTimeoutMs ?? 30_000;
-    this.healthProvider = options.healthProvider ?? (() => (this.isOpen ? 'UNKNOWN' : 'OFFLINE'));
     this.loginProvider = options.loginProvider ?? (() => 'UNKNOWN');
     this.logger = options.logger ?? nullLogger;
     this.webSocketFactory =
@@ -252,11 +241,6 @@ export class ReverseWsClient {
 
   get heartbeatStatus(): HeartbeatStatus {
     return this.deriveHeartbeatStatus();
-  }
-
-  /** Wire the probe's health state into heartbeat and get_status output. */
-  setHealthProvider(provider: () => HealthState): void {
-    this.healthProvider = provider;
   }
 
   /** Wire the adapter's confirmed login state into heartbeat output. */
@@ -639,8 +623,8 @@ export class ReverseWsClient {
   private sendHeartbeatEvent(): void {
     const health = this.deriveHeartbeatStatus();
 
-    // Only standard OneBot fields by default. online comes from adapter-confirmed
-    // login state; good comes from the probe. No state extension is sent.
+    // Only standard OneBot fields by default. online and good both require an
+    // adapter-confirmed login on an open socket. No state extension is sent.
     const event: OneBotEvent = {
       time: nowSeconds(),
       self_id: this.selfIdValue,
@@ -655,13 +639,12 @@ export class ReverseWsClient {
 
   private deriveHeartbeatStatus(): HeartbeatStatus {
     const loginState = this.loginProvider();
-    const healthState = this.healthProvider();
+    const usable = this.isOpen && loginState === 'LOGGED_IN';
 
     return {
       loginState,
-      healthState,
-      online: loginState === 'LOGGED_IN',
-      good: healthState === 'ONLINE' || healthState === 'IDLE',
+      online: usable,
+      good: usable,
     };
   }
 

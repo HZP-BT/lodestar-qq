@@ -85,8 +85,8 @@ export class HealthServer {
       status,
       state: {
         client: current.clientState,
-        login: current.probe.loginState,
-        health: current.probe.state,
+        login: current.health.loginState,
+        health: current.health.state,
       },
       accountId: current.accountId,
       sessionId: current.sessionId,
@@ -122,18 +122,18 @@ export class HealthServer {
 export function isReadyStatus(current: CoreRuntimeStatus): boolean {
   return (
     current.clientState === 'open' &&
-    current.probe.loginState === 'LOGGED_IN' &&
-    (current.probe.state === 'ONLINE' || current.probe.state === 'IDLE')
+    current.health.loginState === 'LOGGED_IN' &&
+    current.health.state === 'ONLINE'
   );
 }
 
 export function renderMetrics(current: CoreRuntimeStatus): string {
-  const states = ['UNKNOWN', 'ONLINE', 'IDLE', 'DEGRADED', 'OFFLINE'] as const;
+  const states = ['UNKNOWN', 'ONLINE', 'OFFLINE'] as const;
   const lines = [
-    '# HELP polaris_health_state Current probe health state (1 for the active state).',
+    '# HELP polaris_health_state Current runtime health state (1 for the active state).',
     '# TYPE polaris_health_state gauge',
     ...states.map(
-      (state) => `polaris_health_state{state="${state}"} ${current.probe.state === state ? 1 : 0}`,
+      (state) => `polaris_health_state{state="${state}"} ${current.health.state === state ? 1 : 0}`,
     ),
     '# HELP polaris_ready Whether readyz would return 200.',
     '# TYPE polaris_ready gauge',

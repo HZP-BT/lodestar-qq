@@ -434,7 +434,7 @@ export class AdminServer {
         detail: health.detail ?? null,
       },
       onebot: { clientState: status.clientState },
-      probe: status.probe,
+      health: status.health,
       sendGuard: status.sendGuard,
       pendingEvents: status.pendingEvents,
       replayableEvents: status.replayableEvents,

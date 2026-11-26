@@ -34,12 +34,10 @@ export type { AdminRuntimeView, AdminServerOptions } from './admin/admin-server.
 export { AdapterActionError } from './adapter/action-error.js';
 export { CoreRuntime } from './runtime/core-runtime.js';
 export type { CoreRuntimeOptions, CoreRuntimeStatus } from './runtime/core-runtime.js';
+export { deriveHealth } from './runtime/health.js';
+export type { HealthState, RuntimeHealth } from './runtime/health.js';
 export { OutboxDispatcher } from './storage/outbox-dispatcher.js';
 export type { OutboxSender } from './storage/outbox-dispatcher.js';
-export { Probe, DEFAULT_PROBE_CONFIG } from './probe/probe.js';
-export type { ProbeConfig, ProbeSnapshot } from './probe/probe.js';
-export { Watchdog } from './probe/watchdog.js';
-export type { WatchdogOptions } from './probe/watchdog.js';
 export { openSqliteDatabase } from './storage/database.js';
 export type { SqliteDatabase, SqliteStatement } from './storage/database.js';
 export { EventStore } from './storage/event-store.js';
@@ -77,7 +75,6 @@ export type {
   CloseInfo,
   ConnectionState,
   HandshakeFailureKind,
-  HealthState,
   HeartbeatOptions,
   HeartbeatStatus,
   OpenInfo,

@@ -59,7 +59,7 @@ AstrBot（只连 Core，不直连 loader）
 | 项 | 来源 | 记录 |
 | --- | --- | --- |
 | QQ 在线/掉线 | QQ 进程 + 登录窗口 | 次数、时间 |
-| 探针状态 | `/metrics` `polaris_health_state` | ONLINE/IDLE/DEGRADED/OFFLINE 时间线 |
+| 运行状态 | `/metrics` `polaris_health_state` | ONLINE/OFFLINE/UNKNOWN 时间线 |
 | `nt_1` 附着 | `self-loader-*.jsonl` | 成功/失败次数、失败原因 |
 | Core 客户端 | `/metrics` `polaris_client_up` | 0/1 |
 | 收发计数 | AstrBot/群 + 审计 | 发送成功/失败/拒绝 |
@@ -125,7 +125,7 @@ elements[].elementType`）并计算哈希。与 D0 不一致时停止，重新�
 - 没有触发停止条件；
 - 收发在配额内，失败率可解释；
 - 审计只有元数据；
-- 探针/`nt_1` 没有持续不可用；
+- 连接/`nt_1` 没有持续不可用；
 - 版本/哈希未漂移。
 
 不能写成“安全”“不会封号”。观察期结束后仍需人工评估是否继续。

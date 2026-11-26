@@ -32,4 +32,4 @@ const adapter = new OneBotUpstreamAdapter({
 
 - Media/file streaming is proxied as OneBot segments only; no local media cache.
 - Multi-account requires one adapter instance per account.
-- Upstream `meta_event heartbeat` is not used as a health signal; Probe uses actions + inbound cursor.
+- Upstream `meta_event heartbeat` is not used as a health signal; Core derives runtime status from the reverse-WS connection plus the adapter-reported login state.

@@ -19,21 +19,15 @@
   - `pnpm --filter @lodestar/adapter-mock test`
   - `pnpm --filter @lodestar/adapter-mock build`
 - 验收：
-  - **Core 侧已完成**：`EventSink.publish`、`EventStore` schema、A1–A6、`OutboxDispatcher`、`Probe` 状态机、`Watchdog`、`SendGuard`/STOP 测试；
+  - **Core 侧已完成**：`EventSink.publish`、`EventStore` schema、A1–A6、`OutboxDispatcher`、`SendGuard`/STOP 测试；
   - **`@lodestar/adapter-mock` 已完成**：MockAdapter 的 emit/freeze/freezeEvents/crash/canary/authFail/slowAction 与动作桩；HTTP 控制面已实现；
-  - **MOCK-14**：worker 监控 SharedArrayBuffer heartbeat，主线程阻塞时 SIGKILL，由外部 supervisor 重启；
   - **Core↔mock 联调**：`CoreRuntime` 把 Adapter→EventSink→Outbox→ReverseWsClient 串起来，E2E 测试通过控制面 emit/freeze/resume 并到达 AstrBot mock。
-- 状态：✅ 核心部分完成（74 个测试）。
+- 状态：✅ 核心部分完成（72 个测试）。
 
-## M1.3 probe（独立探针）
+## M1.3 probe（独立探针）——已取消
 
-- 启动：
-  - `pnpm --filter @lodestar/probe dev`（独立进程/独立定时器）。
-- 验收：
-  - Core 事件循环被人为阻塞时，watchdog 仍能检测并重启；
-  - 数据面停摆但进程存活时，≤90s 检出；
-  - 恢复阶梯（重连 → 重启 adapter → 告警）有测试证明。
-- 状态：待实现。
+> 2026-11-26：独立探针与 Watchdog 已按 [ADR 0008](adr/0008-remove-probe.md) 移除。
+> 运行状态改由 OneBot 连接和适配器上报的登录态推导，本节验收项不再适用。
 
 ## M1.4 Docker Compose + healthcheck
 
@@ -42,9 +36,9 @@
 - 验收：
   - `docker compose ps` 显示 healthy（healthcheck 用 `/readyz`，不是 `/healthz`）；
   - healthcheck：`interval: 30s`、`timeout: 5s`、`start_period: 60s`、`retries: 3`；
-  - `restart: unless-stopped` 只处理退出；healthcheck unhealthy 不自动重启，DEGRADED 不会被重启风暴带走；
-  - `curl http://127.0.0.1:18080/healthz` 返回 200（进程存活；DEGRADED 也是 200）；
-  - `curl http://127.0.0.1:18080/readyz` 仅在 AstrBot 连接且 probe ONLINE/IDLE 时返回 200；DEGRADED/OFFLINE/auth_failed 返回 503；
+  - `restart: unless-stopped` 只处理退出；healthcheck unhealthy 不自动重启；
+  - `curl http://127.0.0.1:18080/healthz` 返回 200（进程存活；离线/鉴权失败也是 200）；
+  - `curl http://127.0.0.1:18080/readyz` 仅在 AstrBot 连接且 QQ 已登录（health ONLINE）时返回 200；OFFLINE/auth_failed 返回 503；
   - 冷启动到“适配器已连接”≤60s；
   - 容器重启后 SQLite 状态可恢复。
 - 状态：🚧 配置与本地 dev-mock 已验证；本环境无 Docker CLI，`docker compose up -d` 需在你的机器上执行确认。

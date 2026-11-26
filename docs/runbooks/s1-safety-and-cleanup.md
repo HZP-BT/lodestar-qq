@@ -30,7 +30,7 @@ AstrBot → Core → SendGuard → upstream adapter → loader → QQ
 - 默认拒绝：空群白名单、私聊关闭、@ 触发；
 - STOP：`data/STOP` 存在时下一次发送立即返回 1508；
 - 配额/速率/重复抑制：SQLite 持久化，跨重启保持；
-- 熔断：探针 DEGRADED/OFFLINE、连续发送失败 3 次、显式安全信号 → OPEN；
+- 熔断：连续发送失败 3 次、显式安全信号 → OPEN；
 - 审计：只写账号/目标/动作/决策/原因/哈希/长度/retcode/时间；
 - 指标：`/metrics` 的 `polaris_send_guard_*`。
 
@@ -142,6 +142,6 @@ package.json    a24c8293c9c5e692f5b2e329daaf9642c7fbf6c10795e76df33f5119f178a379
 ## 7. 事故处理
 
 - 安全中心提示、强制下线、账号限制 → 写 `data/STOP`，停 Core/QQ，记录时间线，回滚；
-- 连续发送失败/探针 DEGRADED → SendGuard 熔断，人工 `resetCircuit()` 前先查原因；
+- 连续发送失败 → SendGuard 熔断，人工 `resetCircuit()` 前先查原因；
 - 版本/哈希漂移 → 停止观察，重新验证 patcher/loader/`nt_1`/事件 schema；
 - 任何不确定的风控信号 → 先停，不先重启/重试。
