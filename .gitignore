@@ -16,3 +16,6 @@ config/send-guard.json
 *.log
 .DS_Store
 Thumbs.db
+
+/release-setup/
+/lodestar-*-windows-x64.zip

@@ -1,6 +1,6 @@
 # Lodestar（Windows x64）安装与启动指南
 
-> 版本：0.1.0-m1.2 · 适用：Windows 10/11 x64 · 目标 QQ：`9.9.37-54395`
+> 版本：0.1.0-m1.3 · 适用：Windows 10/11 x64 · 目标 QQ：`9.9.37-54395`
 >
 > Lodestar 是一个 **Apache-2.0 的 OneBot v11 实现**，用来替代 NapCat、SnowLuma 这类 QQ 端
 > 后端：附着真实 NTQQ 客户端，把 OneBot v11 接口交给 AstrBot。安装包自带运行所需的 Node、
@@ -273,7 +273,7 @@ D:\qq\polaris-backup\<版本>-<时间>\
 
 ## 12. 版本与支持
 
-- 当前版本：`0.1.0-m1.2`
+- 当前版本：`0.1.0-m1.3`
 - 目标 QQ：`9.9.37-54395`（补丁只对这个版本有效）
 - 问题反馈请附：`install.log`、最新的 `self-loader-*.jsonl`、AstrBot 报错时间和
   AstrBot 日志；不要附带账号密码、token 或消息正文。

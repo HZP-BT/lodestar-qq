@@ -1,6 +1,6 @@
 {
   "name": "@lodestar/adapter-mock",
-  "version": "0.1.0-m1.2",
+  "version": "0.1.0-m1.3",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
