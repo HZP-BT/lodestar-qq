@@ -74,7 +74,7 @@ DatabaseSync ok
 
 ### 原始命令输出（2026-11-10T18:23:08Z，本机 Node 26.13.0 / win-x64）
 
-完整 198 行输出归档：[docs/evidence/better-sqlite3-2026-11-11.txt](evidence/better-sqlite3-2026-11-11.txt)。以下为关键片段：
+完整 198 行输出已从仓库移除，以下为关键片段：
 
 ```text
 $ npm view better-sqlite3 dist-tags --json

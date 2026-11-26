@@ -10,7 +10,7 @@ Lodestar 是一个 **Apache-2.0 的 OneBot v11 实现**，用来替代 NapCat、
 
 ## 下载与安装（新用户，推荐）
 
-从 [GitHub Releases](../../releases) 下载最新的 Windows 安装包，解压后双击 `Lodestar-Setup.cmd`。
+从 [GitHub Releases](https://github.com/HZP-BT/lodestar-qq/releases) 下载最新的 Windows 安装包，解压后双击 `Lodestar-Setup.cmd`。
 安装包自带 Node、Core、WebUI 和 QQ loader，**不需要安装 Node 或 pnpm**；一次双击会完成
 环境安装、QQ 补丁/loader 安装和启动。
 
@@ -43,9 +43,9 @@ docker compose -f docker-compose.linux.yml up -d --build
 > 注入/补丁路线属于第三方方案，与腾讯/QQ 无隶属或授权关系；它只能降低、不能归零
 > 账号被风控、踢下线或封禁的风险。请只使用测试号，并自行承担风险。
 
-> 当前状态：M1.1–M1.5 已交付（Docker Compose 尚未实机验证）；OneBot 上游适配器作为
-> 兼容/迁移后端保留；原生 NTQQ loader 已在本机 9.9.37 上跑通私聊/群文本、图片/语音
-> 和 OneBot 动作；接口、目录和补丁仍会随 QQ 版本调整，不构成生产级保证。
+> 当前状态：Windows 一键安装与 Linux 网关模式可用；OneBot 上游适配器作为
+> 兼容/迁移后端保留；原生 NTQQ loader 只支持 `9.9.37-54395`，接口和补丁仍会随 QQ
+> 版本调整，不构成生产级保证。
 
 ## 为什么做 Lodestar
 
@@ -55,7 +55,7 @@ docker compose -f docker-compose.linux.yml up -d --build
 - 许可证：Core 使用 Apache-2.0；不打包 SnowLuma、NapCat 等限制性许可证代码。loader/patcher
   为自研代码，按 Apache-2.0 分发。
 
-## 架构（M1.2 A 组第一步）
+## 架构
 
 ```
 AstrBot ── reverse WS (6199/ws, Bearer token) ──►  @lodestar/core
@@ -108,42 +108,23 @@ curl -X POST http://127.0.0.1:18090/emit -H "Content-Type: application/json" -d 
 
 这条路径不需要 QQ、不需要 patcher，适合先验证 Core 和 WebUI。真实 QQ 需要额外的 OneBot 上游或独立 native adapter，不在 Core 仓库内分发。
 
-## 快速开始（M1.1）
+## 从源码运行
 
-要求：Node.js 22.16+ / 24 / 26（LTS 线），pnpm 10。本机 Node 26.13 已跑通；CI 矩阵覆盖 22 / 24 / 26，并有 22.16.0 最低版本 job。
+要求：Node.js 22.16+ / 24 / 26（LTS 线），pnpm 10；CI 矩阵覆盖 22 / 24 / 26。
 
 > **运行时 SQLite**：请使用官方 Node.js 安装包或官方 Docker 镜像。部分发行版/第三方 Node 包可能未编入 SQLite，`node:sqlite` 会不可用；Lodestar 启动时会 feature-detect 并输出当前 Node/ABI/诊断，可改用官方二进制或 `better-sqlite3` driver（ADR 0006）。
 
 ```bash
 npm install -g pnpm@10
 pnpm install
+pnpm build
 ```
 
-启动 core 并连接 AstrBot 的反向 WebSocket：
+真实 QQ 路径：Windows 上按 [安装与启动指南](docs/quickstart.md) 的源码流程运行
+`scripts\windows\setup.ps1`；或者参考下方“真实 OneBot 上游”，写好 `config/upstream.json`
+后运行 `node scripts/upstream.mjs`。
 
-```bash
-LODESTAR_ONEBOT_URL=ws://127.0.0.1:6199/ws \
-LODESTAR_ONEBOT_TOKEN=your-token \
-LODESTAR_SELF_ID=123456789 \
-pnpm --filter @lodestar/core dev
-```
-
-Windows PowerShell：
-
-```powershell
-$env:LODESTAR_ONEBOT_URL = "ws://127.0.0.1:6199/ws"
-$env:LODESTAR_ONEBOT_TOKEN = "your-token"
-$env:LODESTAR_SELF_ID = "123456789"
-pnpm --filter @lodestar/core dev
-```
-
-AstrBot 侧：新建 `OneBot v11` 机器人，反向 WS 主机 `0.0.0.0`、端口 `6199`，填写同一 Token。日志出现 `aiocqhttp(OneBot v11) 适配器已连接` 即成功。
-
-> `LODESTAR_SELF_ID=0` 只用于 mock/演示；真实使用时必须填 QQ 号，否则 AstrBot 可能把动作路由到错误的账号。
->
-> **M1.1 演示动作说明**：core 目前只注册 `get_login_info` / `get_version_info` / `get_status` 三个动作；其他动作返回 `1404`（CQHTTP WebSocket 的 404 / action not found），这是 M1.1 的预期行为，不是故障。真实动作由后续 adapter 提供。
->
-> M1.1 还没有 adapter 的登录确认，`loginState` 默认 `UNKNOWN`，所以 heartbeat 与 `get_status` 的 `online` 为 `false`、`good` 为 `false` 属预期；M1.2 adapter 接入并由登录事件确认后才变 `true`。这不是“假在线”的反向版本，而是拒绝自证。
+无 QQ 的本地演示：`pnpm demo`（见上一节）。
 
 ## 鉴权失败与恢复
 
@@ -175,7 +156,7 @@ OneBot v11 规范只定义 `status` / `retcode` 字段，**没有规定数值表
 | 1500 | failed | Lodestar 内部错误 | Lodestar 自定 | 主动生成 | 否（动作级） |
 | 1501 | failed | 动作处理超时 | Lodestar 自定 | 主动生成 | 否（动作级） |
 | 1502 | failed | 适配器不可用 | Lodestar 自定 | 预留 | 由上层决定 |
-| 1503 | failed | 背压/队列满 | Lodestar 自定 | M1.2 主动生成（outbox） | 可延迟重试 |
+| 1503 | failed | 背压/队列满 | Lodestar 自定 | Core 主动生成（outbox） | 可延迟重试 |
 | 1504 | failed | 限流/配额（上游返回时透传） | Lodestar 自定 | 透传 | 由上层决定 |
 | 1505 | failed | 版本不兼容 | Lodestar 自定 | 预留 | 否 |
 | 1506 | failed | 适配器鉴权失败 | Lodestar 自定 | 预留 | 否 |
@@ -211,29 +192,6 @@ pnpm build         # tsc 产出 dist
 pnpm verify        # lint + format + typecheck + test + build
 ```
 
-## Docker Compose（本地 demo）
-
-```bash
-docker compose up -d
-docker compose logs -f lodestar-core
-```
-
-默认启动 `lodestar-core`（MockAdapter + 内置 mock AstrBot + WebUI）。日志会打印面板地址和 token；token 同时持久化在宿主机的 `data/admin-token`。端口只发布到宿主机回环地址：
-
-- `127.0.0.1:18080`：`/healthz`、`/readyz`、`/metrics`
-- `127.0.0.1:18081`：Web 控制面板
-- `127.0.0.1:18090`：adapter-mock HTTP 控制面
-
-```bash
-curl http://127.0.0.1:18080/healthz
-curl http://127.0.0.1:18080/readyz
-curl -X POST http://127.0.0.1:18090/emit -H "Content-Type: application/json" -d '{"text":"hello"}'
-```
-
-容器内 AdminServer 通过 `LODESTAR_ADMIN_ALLOW_NON_LOOPBACK=1` 绑定容器网络；Compose 只把 `18081` 发布到宿主机 `127.0.0.1`。不要把该端口改成 `0.0.0.0` 或暴露到公网。当前开发机未安装 Docker，Compose 未在本机实机复验；本地 mock 演示以 `pnpm demo` 为准。
-
-`healthcheck` 使用 `/readyz`：`interval: 30s`、`timeout: 5s`、`start_period: 60s`、`retries: 3`；`restart: unless-stopped` 只处理进程退出，**healthcheck unhealthy 不会自动重启容器**。就绪与否由 `/readyz` 和 `polaris_health_state` 指标反映。
-
 ## Windows 安装（源码流程）
 
 新用户请直接使用上面 Releases 里的安装包；本节是源码开发流程，需要 Node/pnpm。
@@ -267,102 +225,6 @@ powershell -ExecutionPolicy Bypass -File scripts\windows\setup.ps1
 > 脚本会用普通权限启动 QQ，不需要 UAC；或者右键 `Lodestar-Setup.cmd` → 以管理员身份运行。
 > 已经登录 QQ 时，3001 正常监听就不会再要求提权。
 
-### mock 演示包（开发/演示，不是 external）
-
-`Lodestar-Demo.cmd` 的 mock 包自带 `node.exe`、Core、WebUI 和 mock 后端，不需要 Node/pnpm。
-面板会明确显示 **“演示模式（Mock）”**，状态不代表真实 QQ/AstrBot；它只用于演示界面，
-不参与 external 流程。
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\release\package-windows.ps1 -IncludeNode
-```
-
-产物在 `release/`：包含 `lodestar-demo.cjs`、WebUI、`Lodestar-Demo.cmd` 和可选
-`node.exe` 的 zip + `SHA256SUMS.txt`。
-
-> 公开 Release 的主下载是 Windows 安装包（自带运行时与本地 loader/patcher）；
-> mock 演示包只用于开发/演示。源码仓库不提交 `node_modules`、`dist`、`data`、`logs`
-> 或本地 `config/*.json`。
-
-## Windows 安装（M1.5）
-
-前置：Node 22.16+、pnpm 10、已 `pnpm install && pnpm build`。
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\windows\install.ps1 `
-  -SelfId "123456789" `
-  -Token "your-token"
-```
-
-安装脚本会：
-
-- 从 `config/polaris.example.json` 生成 `config/polaris.json`（已存在则不覆盖，参数可更新）；
-- 校验 Node 版本、配置与入口文件；
-- 注册 **计划任务** `LodestarCore`（登录时启动，失败每分钟重试，最多 999 次）；
-- 创建 `logs/`、`data/`，并输出路径。
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\windows\start.ps1
-```
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\windows\stop.ps1
-```
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\windows\uninstall.ps1
-```
-
-- `stop.ps1` 停止计划任务/进程。
-- 计划任务在**当前用户登录时**启动；若需要未登录也运行，请改用 Windows 服务（需管理员/服务账号），不要用计划任务硬绕。
-- 若 `Register-ScheduledTask` 被拒绝，请用管理员 PowerShell 重新运行 `install.ps1`。
-- 配置模板：[config/polaris.example.json](config/polaris.example.json)；环境变量覆盖参考：[.env.example](.env.example)。
-- 服务入口默认 `packages/core/dist/main.js`；当前 M1.5 是服务封装，真实 adapter 接入后只需改 `entrypoint`/env，无需改脚本。
-- `-Entrypoint <path>` 可显式覆盖入口（优先级高于 `config.entrypoint`），无需编辑 `polaris.json`。
-
-### dev-mock 全链路验证
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\windows\install.ps1 -DevMock -Start
-```
-
-- 等价于把计划任务入口设为 `scripts/dev-mock.mjs`，`install.log` 会记录 `MODE=dev-mock`；没有现成配置时自动使用 demo `selfId=10001`。
-- dev-mock 会占用 **18080/18090**，并与真实后端互斥；验证完再运行一次不带 `-DevMock` 的 `install.ps1` 即可切回默认入口。
-- 验证顺序：`/readyz` → `POST /emit` → `stop.ps1`。
-
-PowerShell 推荐用 `Invoke-RestMethod`，避免 `curl.exe` 的 JSON 引号问题：
-
-```powershell
-Invoke-RestMethod -Method Post -Uri http://127.0.0.1:18090/emit -ContentType "application/json" -Body '{"text":"hello"}'
-```
-
-> PowerShell 5.1 给 `curl.exe` 传 `-d '{"text":"hello"}'` 时仍可能吞掉 JSON 引号，控制面会返回 `{"error":"invalid JSON body"}`。这是预期的 400 校验，不是服务故障；请用上面的 `Invoke-RestMethod`。
-
-## M3 预研：原生 NTQQ 注入 spike
-
-隔离目录 [spike/ntqq-inject](spike/ntqq-inject/README.md) 用于验证原生后端的底层能力，不属于
-Core 依赖：
-
-- 已实现 PE manual map（重定位、IAT、远程线程）与命名管道回报；
-- 良性 target 上累计执行 5 次，4 次通过完整断言（退出码 0、管道消息、target 存活）；
-- 负载用 Zig 构建为 3,072 字节、仅导入 kernel32 的 DLL，无 CRT/TLS 依赖；
-- **未注入 QQ**，未接入 Core，也没有任何消息/登录 hook；
-- Defender 对注入器有间歇性 `Trojan:Win32/Bearfoos.A!ml` 误报，尚未处理排除项或签名；
-- 本机 QQ 为 `9.9.33.52230`（`D:\qq`，x64），探测结果见
-  [evidence](spike/ntqq-inject/evidence/probe-qq-2026-11-12.txt)。
-
-在 S1（良性附着 QQ）之前，需要先决定 Defender/装载路径问题。详见 spike 的
-[README](spike/ntqq-inject/README.md) 与 [EVIDENCE](spike/ntqq-inject/EVIDENCE.md)。
-
-装载路径的单独评估见 [NTQQ 附着路径评估](docs/design/ntqq-loading-path.md)：QQNT
-没有腾讯官方插件 API；LiteLoaderQQNT 需要绕过 QQ 文件完整性校验且上游已归档；
-NapCat 的 Windows 路线是启动注入。S0 已在该路线上完成自研 loader 与 OneBot 收发的
-最小验证，不再重复论证路线。
-
-S0 验证已收束，S0 边界、S1 关键路径和 backlog 见
-[S0 结案与 S1 边界](docs/design/s0-closure-and-s1-boundary.md)。S1 的 SendGuard 部分
-已移除（[ADR 0009](docs/adr/0009-remove-send-guard.md)）；这里保留低量观察的边界记录。
-
 ## 真实 OneBot 上游（NapCat / SnowLuma）
 
 > **定位说明：这是兼容/迁移后端，不是 Lodestar 的默认形态。** Lodestar 的默认后端是原生 NTQQ loader，直接附着真实 QQ 客户端，不经过 NapCat/SnowLuma/LLOneBot。上游适配器只用于：迁移期验证 Core 的协议与投递，以及在原生 loader 不可用时作为降级路径。
@@ -388,14 +250,8 @@ Copy-Item config\upstream.example.json config\upstream.json
 node scripts\upstream.mjs
 ```
 
-Windows 服务模式：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\windows\install.ps1 -Entrypoint scripts\upstream.mjs -Start
-```
-
-- `scripts/upstream.mjs` 读取 `config/upstream.json`；`service-runner` 的 `config/polaris.json` 仅用于 DevMock/默认入口，不会覆盖上游配置。
-- 默认入口仍是 `packages/core/dist/main.js`；`-DevMock` 仍指向 mock，三种入口互斥。
+Windows 常驻：仓库不再内置服务安装脚本。需要开机自启时，用计划任务或 NSSM 等工具
+以仓库根目录为工作目录运行 `node scripts\upstream.mjs`。
 
 ## Web 控制面板（本地）
 
@@ -421,59 +277,57 @@ LODESTAR_ADMIN_TOKEN=replace-with-a-local-token node scripts/upstream.mjs
 
 默认使用 Node 内置 `node:sqlite`（Node 22.16+，零 native 依赖），封装在 `SqliteDriver` 接口后；`better-sqlite3` 作为经 CI 验证的备选 driver，不作为默认依赖。取舍、API Added-in 与 CI 验证矩阵见 [ADR 0006](docs/adr/0006-storage-engine.md)。
 
-## 仓库结构（M1.2 A 组第一步）
+## 仓库结构
 
 ```text
 lodestar-qq/
 ├─ packages/core/
 │  ├─ src/onebot/          # 反向 WS 客户端、动作路由、退避、鉴权
 │  ├─ src/adapter/         # AdapterEvent/PublishResult、EventSink、eventKey、meta 拒收
-│  ├─ src/storage/         # schema、node:sqlite driver、EventStore、OutboxDispatcher、运行期探测
+│  ├─ src/storage/         # schema、node:sqlite driver、EventStore、OutboxDispatcher
 │  ├─ src/observability/   # /healthz /readyz /metrics
 │  ├─ src/runtime/         # CoreRuntime：Adapter→EventSink→Outbox→ReverseWsClient；health.ts 运行状态
 │  ├─ src/admin/           # 本地管理 HTTP API（127.0.0.1 + token）
 │  ├─ src/config.ts        # 配置 schema
 │  ├─ src/logger.ts        # 结构化日志
 │  ├─ src/main.ts          # 开发用 CLI
-│  ├─ tests/               # Vitest + mock WS 服务 + A1–A6 + B/C
+│  ├─ tests/               # Vitest + mock WS 服务
 │  └─ dist/                # 构建产物（gitignored）
-├─ packages/adapter-mock/  # MockAdapter：emit/freeze/crash/canary/动作桩 + HTTP 控制面
-│  ├─ src/                 # mock-adapter.ts、control-server.ts
+├─ packages/adapter-mock/  # MockAdapter：emit/freeze/crash/动作桩 + HTTP 控制面（测试/演示）
+│  ├─ src/
 │  └─ tests/
-├─ packages/adapter-onebot-upstream/  # 真实 OneBot 上游 WS 客户端
+├─ packages/adapter-onebot-upstream/  # OneBot v11 上游 WS 客户端（连接 loader）
 ├─ packages/web/           # 本地状态面板（零框架 TS SPA）
+├─ spike/ntqq-loader/      # NTQQ loader + OneBot 服务（安装器随包分发）
 ├─ docs/adr/               # 架构决策记录（0001–0009）
-├─ docs/design/            # AdapterInterface、mock 用例
-├─ docs/evidence/          # 原始依赖证据
-├─ docs/m1-acceptance.md   # M1“一条命令启动”子项
-├─ docs/runbooks/          # 24h 冒烟
-├─ config/polaris.example.json
-├─ .env.example
-├─ scripts/windows/        # install/start/stop/uninstall/service-runner
+├─ docs/design/            # AdapterInterface、面板设计
+├─ docs/quickstart.md      # Windows 安装与启动指南
+├─ docs/linux.md           # Linux 网关部署指南
+├─ config/upstream.example.json
+├─ scripts/windows/        # bootstrap-external、setup（源码）
 ├─ scripts/release/        # 安装包构建（Windows zip / Linux tar.gz）
-├─ scripts/dev-mock.mjs    # Compose 演示入口：mock AstrBot + CoreRuntime + health
-├─ Dockerfile              # mock 演示镜像
-├─ Dockerfile.linux        # Linux 网关运行镜像
-├─ docker-compose.yml      # mock 演示
+├─ scripts/upstream.mjs    # external runtime 入口
+├─ scripts/dev-mock.mjs    # 本地 mock 演示入口
+├─ Dockerfile.linux        # Linux 网关镜像
 ├─ docker-compose.linux.yml # Linux 网关部署
 ├─ deploy/                 # systemd 单元示例
-├─ .github/workflows/ci.yml
+├─ .github/workflows/      # CI 与发布
 ├─ package.json
 ├─ pnpm-workspace.yaml
 └─ README.md
 ```
 
-## 设计目标 vs 实测值
+## 设计目标（非承诺）
 
-下表是**设计目标，不是承诺**。实测值会在 M1/M2 的测试报告中回填；未实测的一律写“待测”。
+下表是设计目标，不是承诺；未实测的一律写“待测”。
 
 | 指标 | 设计目标（非承诺） | 实测值 |
 | --- | --- | --- |
 | 冷启动到 AstrBot 适配器连接 | ≤ 60s | 待测 |
-| 消息投递成功率 | ≥ 99% | 待 M1.2 |
-| 重复投递率（端到端，AstrBot 侧按 message_id） | ≤ 0.1% | 待 72h 联调 |
+| 消息投递成功率 | ≥ 99% | 待测 |
+| 重复投递率（端到端，AstrBot 侧按 message_id） | ≤ 0.1% | 待测 |
 | Core 空闲 RSS（不含 QQ 客户端） | ≤ 150MB | 待测 |
-| 整机内存（含 QQ 客户端） | ≤ 1.2GB | 待实测 |
+| 整机内存（含 QQ 客户端） | ≤ 1.2GB | 待测 |
 | 新手按 README 完成部署 | ≤ 30 分钟 | 待测 |
 
 ## 风险与合规
@@ -486,16 +340,6 @@ Lodestar 不内置发送侧的风控、白名单或限流：AstrBot 发什么就
 - 控制消息频率（在 AstrBot 侧配置或人工掌握）；
 - 发现异常时立即停止 Core 进程并关闭 QQ；
 - **合规性由使用方式兜底，而不是由后端类型兜底。** 请遵守《QQ 用户协议》和当地法律，仅用于个人或小规模合法用途。
-
-### 24h 主力号冒烟的风险说明
-
-M2 可能用你的主力号做一次 24h 冒烟。必须按最小风险执行：
-
-- 只在一个测试群里、只在被 @ 时回复；不开主动群发、不加好友、不做营销。
-- 最小消息量：建议 ≤1 条/15 分钟。
-- 随时可一键停用：Ctrl-C 或停止 Core 进程，再退出 QQ。
-- **即使如此，账号仍可能被风控/踢下线/封禁；风险由使用者自担。** 不能接受该风险时，不要用主力号，继续用 mock/回环。
-- 72h 真实投递仍以 mock/回环为主；24h 冒烟只证明“能稳定跑”，不证明“零风险”。
 
 ## 非目标
 
@@ -515,7 +359,10 @@ M2 可能用你的主力号做一次 24h 冒烟。必须按最小风险执行：
 ## 文档
 
 - [贡献指南](CONTRIBUTING.md)
-- [M1 验收子项：一条命令启动与可观测](docs/m1-acceptance.md)
+- [安装与启动指南（Windows）](docs/quickstart.md)
+- [Linux 部署指南](docs/linux.md)
+- [Web 控制面板设计](docs/design/admin-panel.md)
+- [AdapterInterface 设计稿](docs/design/adapter-interface.md)
 - [ADR 0001：后端范围与官方 Bot API 的否决](docs/adr/0001-backend-scope.md)
 - [ADR 0002：Core 与适配器的许可证边界](docs/adr/0002-license-boundary.md)
 - [ADR 0003：OneBot retcode 策略](docs/adr/0003-retcode-policy.md)
@@ -525,12 +372,3 @@ M2 可能用你的主力号做一次 24h 冒烟。必须按最小风险执行：
 - [ADR 0007：风险缓释开关（已由 ADR 0009 取代）](docs/adr/0007-risk-controls.md)
 - [ADR 0008：移除独立探针，健康状态改由连接与登录态推导](docs/adr/0008-remove-probe.md)
 - [ADR 0009：移除 SendGuard](docs/adr/0009-remove-send-guard.md)
-- [AdapterInterface 设计稿](docs/design/adapter-interface.md)
-- [adapter-mock 用例清单](docs/design/adapter-mock-cases.md)
-- [S0 结案与 S1 边界](docs/design/s0-closure-and-s1-boundary.md)
-- [Web 控制面板设计](docs/design/admin-panel.md)
-- [安装与启动指南](docs/quickstart.md)
-- [Linux 部署指南](docs/linux.md)
-- [S1-a 14 天低量观察 Runbook](docs/runbooks/s1a-14d-observation.md)
-- [S1 安全限制与测试环境清理](docs/runbooks/s1-safety-and-cleanup.md)
-- [24h 主力号冒烟 Runbook](docs/runbooks/24h-smoke.md)
